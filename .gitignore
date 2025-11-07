@@ -1,0 +1,9 @@
+node_modules/
+*.log
+.env
+output/
+temp/
+uploads/
+*.pdf
+*.zip
+.DS_Store

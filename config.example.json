@@ -1,0 +1,48 @@
+{
+  "upscale": {
+    "scale": 2,
+    "faceEnhance": false
+  },
+  "inpainting": {
+    "autoDetectMask": true
+  },
+  "faceRestore": {
+    "enabled": false,
+    "version": "v1.4"
+  },
+  "ocr": {
+    "enabled": false,
+    "saveText": true
+  },
+  "pdf": {
+    "widthIn": 6.625,
+    "heightIn": 10.25,
+    "dpi": 300,
+    "bleedIn": 0.125
+  },
+  "matteCompensation": 5,
+  "qa": {
+    "enabled": true,
+    "checkHistogram": true,
+    "clippingThreshold": 0.01,
+    "checkPrintReadiness": true,
+    "minDPI": 300,
+    "minSharpness": 100
+  },
+  "batch": {
+    "concurrency": 1,
+    "createSinglePDF": false
+  },
+  "output": {
+    "directory": "output",
+    "author": ""
+  },
+  "_comments": {
+    "scale": "2x is usually enough for print, 4x for extreme detail",
+    "faceEnhance": "Keep false for stylized comic art",
+    "matteCompensation": "Lift midtones by 5-8 to prevent darkening on matte paper",
+    "dpi": "300 minimum for print, 600 for highest quality",
+    "bleedIn": "0.125 inch (1/8 inch) is standard bleed",
+    "concurrency": "Keep at 1 to respect Replicate API rate limits"
+  }
+}

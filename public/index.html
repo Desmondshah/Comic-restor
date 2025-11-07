@@ -1,0 +1,637 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Comic Restoration Pipeline</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    :root {
+      --primary: #4f46e5;
+      --primary-dark: #4338ca;
+      --success: #10b981;
+      --warning: #f59e0b;
+      --danger: #ef4444;
+      --bg: #0f172a;
+      --bg-card: #1e293b;
+      --bg-hover: #334155;
+      --text: #f1f5f9;
+      --text-muted: #94a3b8;
+      --border: #334155;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+    }
+
+    .container {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+
+    header {
+      text-align: center;
+      padding: 40px 20px;
+      background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+      border-radius: 12px;
+      margin-bottom: 30px;
+    }
+
+    header h1 {
+      font-size: 2.5rem;
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 15px;
+    }
+
+    header p {
+      color: rgba(255, 255, 255, 0.9);
+      font-size: 1.1rem;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 30px;
+      margin-bottom: 30px;
+    }
+
+    @media (max-width: 1024px) {
+      .grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 30px;
+    }
+
+    .card h2 {
+      font-size: 1.5rem;
+      margin-bottom: 20px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .upload-zone {
+      border: 2px dashed var(--border);
+      border-radius: 8px;
+      padding: 40px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.3s;
+      margin-bottom: 20px;
+    }
+
+    .upload-zone:hover {
+      border-color: var(--primary);
+      background: rgba(79, 70, 229, 0.1);
+    }
+
+    .upload-zone.dragover {
+      border-color: var(--primary);
+      background: rgba(79, 70, 229, 0.2);
+    }
+
+    .upload-zone.has-file {
+      border-color: var(--success);
+      background: rgba(16, 185, 129, 0.1);
+    }
+
+    .upload-icon {
+      font-size: 3rem;
+      margin-bottom: 15px;
+    }
+
+    input[type="file"] {
+      display: none;
+    }
+
+    .btn {
+      background: var(--primary);
+      color: white;
+      border: none;
+      padding: 12px 24px;
+      border-radius: 6px;
+      font-size: 1rem;
+      cursor: pointer;
+      transition: all 0.2s;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .btn:hover {
+      background: var(--primary-dark);
+      transform: translateY(-1px);
+    }
+
+    .btn:disabled {
+      background: var(--border);
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .btn-success {
+      background: var(--success);
+    }
+
+    .btn-danger {
+      background: var(--danger);
+    }
+
+    .btn-small {
+      padding: 6px 12px;
+      font-size: 0.875rem;
+    }
+
+    .form-group {
+      margin-bottom: 20px;
+    }
+
+    .form-group label {
+      display: block;
+      margin-bottom: 8px;
+      color: var(--text-muted);
+      font-size: 0.9rem;
+    }
+
+    input[type="number"],
+    select {
+      width: 100%;
+      padding: 10px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text);
+      font-size: 1rem;
+    }
+
+    .checkbox-group {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    input[type="checkbox"] {
+      width: 20px;
+      height: 20px;
+      cursor: pointer;
+    }
+
+    .preview-container {
+      margin: 20px 0;
+      text-align: center;
+    }
+
+    .mask-editor-container {
+      display: none;
+      margin: 20px 0;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 20px;
+      background: var(--bg);
+    }
+
+    .mask-editor-container.active {
+      display: block;
+    }
+
+    .canvas-wrapper {
+      position: relative;
+      display: inline-block;
+      max-width: 100%;
+      margin: 20px 0;
+    }
+
+    #maskCanvas {
+      border: 1px solid var(--border);
+      cursor: crosshair;
+      max-width: 100%;
+      height: auto;
+      display: block;
+    }
+
+    .mask-tools {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 15px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    .tool-group {
+      display: flex;
+      gap: 5px;
+      align-items: center;
+      padding: 5px 10px;
+      background: var(--bg-card);
+      border-radius: 6px;
+    }
+
+    .tool-btn {
+      padding: 8px 16px;
+      background: var(--bg-card);
+      border: 2px solid var(--border);
+      color: var(--text);
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.2s;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .tool-btn:hover {
+      border-color: var(--primary);
+    }
+
+    .tool-btn.active {
+      background: var(--primary);
+      border-color: var(--primary);
+      color: white;
+    }
+
+    .brush-size-input {
+      width: 80px;
+      padding: 6px;
+    }
+
+    .opacity-control {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    input[type="range"] {
+      width: 120px;
+    }
+
+    .preview-image {
+      max-width: 100%;
+      max-height: 400px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+    }
+
+    .jobs-list {
+      display: flex;
+      flex-direction: column;
+      gap: 15px;
+    }
+
+    .job-card {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 20px;
+      transition: all 0.2s;
+    }
+
+    .job-card:hover {
+      border-color: var(--primary);
+    }
+
+    .job-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 15px;
+    }
+
+    .job-title {
+      font-size: 1.1rem;
+      font-weight: 600;
+    }
+
+    .job-status {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 12px;
+      border-radius: 20px;
+      font-size: 0.85rem;
+      font-weight: 500;
+    }
+
+    .status-queued {
+      background: rgba(148, 163, 184, 0.2);
+      color: var(--text-muted);
+    }
+
+    .status-processing {
+      background: rgba(245, 158, 11, 0.2);
+      color: var(--warning);
+    }
+
+    .status-completed {
+      background: rgba(16, 185, 129, 0.2);
+      color: var(--success);
+    }
+
+    .status-failed {
+      background: rgba(239, 68, 68, 0.2);
+      color: var(--danger);
+    }
+
+    .progress-bar {
+      height: 6px;
+      background: var(--border);
+      border-radius: 3px;
+      overflow: hidden;
+      margin: 10px 0;
+    }
+
+    .progress-fill {
+      height: 100%;
+      background: linear-gradient(90deg, var(--primary), var(--primary-dark));
+      transition: width 0.3s;
+    }
+
+    .job-details {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-top: 15px;
+      font-size: 0.9rem;
+      color: var(--text-muted);
+    }
+
+    .job-actions {
+      display: flex;
+      gap: 10px;
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 60px 20px;
+      color: var(--text-muted);
+    }
+
+    .empty-state-icon {
+      font-size: 4rem;
+      margin-bottom: 20px;
+      opacity: 0.5;
+    }
+
+    .alert {
+      padding: 15px 20px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .alert-warning {
+      background: rgba(245, 158, 11, 0.1);
+      border: 1px solid rgba(245, 158, 11, 0.3);
+      color: var(--warning);
+    }
+
+    .alert-success {
+      background: rgba(16, 185, 129, 0.1);
+      border: 1px solid rgba(16, 185, 129, 0.3);
+      color: var(--success);
+    }
+
+    .spinner {
+      display: inline-block;
+      width: 16px;
+      height: 16px;
+      border: 2px solid rgba(255, 255, 255, 0.3);
+      border-top-color: white;
+      border-radius: 50%;
+      animation: spin 0.6s linear infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 0.75rem;
+      font-weight: 500;
+      background: var(--border);
+    }
+
+    footer {
+      text-align: center;
+      padding: 30px 20px;
+      color: var(--text-muted);
+      font-size: 0.9rem;
+    }
+
+    .settings-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 20px;
+    }
+
+    @media (max-width: 768px) {
+      .settings-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>
+        📘 Comic Restoration Pipeline
+      </h1>
+      <p>AI-powered comic scan restoration with print-ready PDF export</p>
+    </header>
+
+    <div id="apiWarning"></div>
+
+    <div class="grid">
+      <!-- Upload & Settings -->
+      <div class="card">
+        <h2>🎨 Upload & Restore</h2>
+        
+        <!-- Image Upload -->
+        <div class="upload-zone" id="uploadZone">
+          <div class="upload-icon">📄</div>
+          <div id="uploadText">
+            <strong>Drag & drop comic scan here</strong><br>
+            <span style="color: var(--text-muted);">or click to browse (JPG, PNG, TIFF)</span>
+          </div>
+          <input type="file" id="imageInput" accept="image/jpeg,image/png,image/tiff">
+        </div>
+
+        <!-- Mask Upload (Optional) -->
+        <div class="upload-zone" id="maskZone" style="padding: 20px;">
+          <div style="font-size: 1.5rem;">🎭</div>
+          <div id="maskText">
+            <strong>Damage Mask</strong> <span style="color: var(--danger); font-weight: normal;">(Currently Unavailable)</span><br>
+            <span style="color: var(--text-muted); font-size: 0.85rem;">
+              Inpainting models on Replicate are currently unavailable. Use external tools (Photoshop, GIMP) for damage removal.
+            </span>
+          </div>
+          <input type="file" id="maskInput" accept="image/png,image/jpeg,image/jpg" disabled>
+        </div>
+
+        <!-- Preview -->
+        <div id="previewContainer" class="preview-container" style="display: none;">
+          <img id="previewImage" class="preview-image" alt="Preview">
+        </div>
+
+        <!-- Damage Mask Editor -->
+        <div id="maskEditorContainer" class="mask-editor-container">
+          <h3 style="margin-bottom: 15px;">🖌️ Mark Damaged Areas</h3>
+          <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 15px;">
+            Paint over stains, scratches, tears, and damaged areas in white. These areas will be automatically repaired using AI inpainting.
+          </p>
+          
+          <div class="mask-tools">
+            <div class="tool-group">
+              <button class="tool-btn active" id="brushBtn" title="Draw damage areas">
+                🖌️ Brush
+              </button>
+              <button class="tool-btn" id="eraserBtn" title="Erase mistakes">
+                🧹 Eraser
+              </button>
+            </div>
+            
+            <div class="tool-group">
+              <label style="font-size: 0.9rem; color: var(--text-muted);">Size:</label>
+              <input type="number" id="brushSize" class="brush-size-input" value="20" min="1" max="200">
+            </div>
+            
+            <div class="tool-group opacity-control">
+              <label style="font-size: 0.9rem; color: var(--text-muted);">Opacity:</label>
+              <input type="range" id="maskOpacity" min="0" max="100" value="50">
+              <span id="opacityValue">50%</span>
+            </div>
+            
+            <div class="tool-group">
+              <button class="tool-btn" id="clearMaskBtn" title="Clear all damage marks">
+                🗑️ Clear
+              </button>
+            </div>
+          </div>
+
+          <div class="canvas-wrapper">
+            <canvas id="maskCanvas"></canvas>
+          </div>
+
+          <div style="display: flex; gap: 10px; margin-top: 15px;">
+            <button class="btn" id="saveMaskBtn" style="flex: 1;">
+              💾 Save Damage Mask
+            </button>
+            <button class="btn btn-danger" id="cancelMaskBtn">
+              ❌ Cancel
+            </button>
+          </div>
+        </div>
+
+        <!-- Settings -->
+        <h3 style="margin: 30px 0 15px 0;">⚙️ Settings</h3>
+        <div class="settings-grid">
+          <div class="form-group">
+            <label>Upscale Factor</label>
+            <select id="scale">
+              <option value="2" selected>2x (Standard)</option>
+              <option value="4">4x (High Quality)</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label>Output DPI</label>
+            <select id="dpi">
+              <option value="300" selected>300 DPI (Standard)</option>
+              <option value="600">600 DPI (High Quality)</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label>Lighting Style ✨</label>
+            <select id="lightingPreset">
+              <option value="modern-reprint" selected>Modern Reprint (Balanced)</option>
+              <option value="dramatic">Dramatic (High Contrast)</option>
+              <option value="subtle">Subtle (Natural)</option>
+              <option value="vintage-enhanced">Vintage Enhanced</option>
+              <option value="none">None (Disable)</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label>Matte Compensation</label>
+            <input type="number" id="matteComp" min="0" max="20" value="5">
+          </div>
+
+          <div class="form-group">
+            <label>Bleed (inches)</label>
+            <input type="number" id="bleed" min="0" max="0.5" step="0.0625" value="0.125">
+          </div>
+        </div>
+
+        <div class="checkbox-group" style="margin-bottom: 10px;">
+          <input type="checkbox" id="faceRestore">
+          <label for="faceRestore" style="margin: 0;">Enable face restoration (use sparingly)</label>
+        </div>
+
+        <div class="checkbox-group" style="margin-bottom: 20px;">
+          <input type="checkbox" id="extractOCR">
+          <label for="extractOCR" style="margin: 0;">Extract text with OCR</label>
+        </div>
+
+        <div style="background: linear-gradient(135deg, rgba(79, 70, 229, 0.1), rgba(168, 85, 247, 0.1)); padding: 15px; border-radius: 8px; margin-bottom: 20px; border: 1px solid rgba(79, 70, 229, 0.2);">
+          <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+            <span style="font-size: 1.2rem;">✨</span>
+            <strong>Premium Lighting Enabled</strong>
+          </div>
+          <p style="margin: 0; color: var(--text-muted); font-size: 0.9rem;">
+            Adds depth, dynamic highlights, and rim lighting for a modern reprint variant look.
+          </p>
+        </div>
+
+        <button class="btn btn-success" id="restoreBtn" disabled style="width: 100%; font-size: 1.1rem;">
+          <span>🚀 Start Restoration</span>
+        </button>
+      </div>
+
+      <!-- Jobs List -->
+      <div class="card">
+        <h2>📋 Restoration Jobs</h2>
+        <div id="jobsList" class="jobs-list">
+          <div class="empty-state">
+            <div class="empty-state-icon">📭</div>
+            <p>No jobs yet. Upload a comic scan to get started!</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <footer>
+      <p>Comic Restoration Pipeline v1.0 | Powered by Replicate AI</p>
+      <p style="margin-top: 10px;">
+        <a href="https://github.com" style="color: var(--primary);">Documentation</a> •
+        <a href="#" onclick="window.open('/api/config', '_blank'); return false;" style="color: var(--primary);">API</a>
+      </p>
+    </footer>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
