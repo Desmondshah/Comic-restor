@@ -5,6 +5,14 @@ Professional public-domain comic scan restoration using Replicate AI models, wit
 ## Features
 
 - **🌐 Web Interface**: Beautiful drag & drop UI with real-time progress tracking
+- **💾 Preset Management**: Save & load custom restoration presets
+  - 4 built-in era presets (Golden Age, Silver Age, Bronze Age, Modern Age)
+  - Custom preset creation with metadata (name, description, era type)
+  - One-click preset application for consistent batch processing
+- **🔄 Before/After Comparison**: Interactive comparison viewer
+  - Split view with draggable slider for precise comparisons
+  - Side-by-side mode with synchronized zoom & pan
+  - Perfect for quality checking and fine-tuning settings
 - **🎭 Damage Mask Editor**: Interactive canvas tool to mark stains, scratches, and tears for AI removal
 - **AI-Powered Restoration**: Real-ESRGAN for upscaling/cleanup, LaMa for damage removal
 - **✨ Premium Lighting Effects**: Add depth, dynamic highlights & rim lighting for modern reprint quality
@@ -204,6 +212,18 @@ Available examples:
 ├── output/                 # Restored PDFs
 └── config.json            # Optional configuration file
 ```
+
+## Documentation
+
+- **[PRESET_COMPARISON_GUIDE.md](PRESET_COMPARISON_GUIDE.md)** - Complete guide to preset management and comparison features
+- **[PRESET_QUICK_REFERENCE.md](PRESET_QUICK_REFERENCE.md)** - Quick reference card for presets and comparison
+- **[UPDATE_GUIDE.md](UPDATE_GUIDE.md)** - What's new and how to migrate
+- **[VISUAL_UI_GUIDE.md](VISUAL_UI_GUIDE.md)** - Visual guide to the UI
+- **[GETTING_STARTED.md](GETTING_STARTED.md)** - Beginner setup guide
+- **[QUICKSTART.md](QUICKSTART.md)** - Quick start guide
+- **[COLOR_CORRECTION_GUIDE.md](COLOR_CORRECTION_GUIDE.md)** - Color correction documentation
+- **[PREMIUM_LIGHTING_GUIDE.md](PREMIUM_LIGHTING_GUIDE.md)** - Lighting effects guide
+- **[DAMAGE_MASK_GUIDE.md](DAMAGE_MASK_GUIDE.md)** - Damage mask editor guide
 
 ## License
 

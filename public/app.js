@@ -21,6 +21,23 @@ let currentTool = 'brush'; // 'brush' or 'eraser'
 let brushSize = 20;
 let maskOpacity = 0.5;
 
+// Preset State
+let customPresets = {};
+let currentPresetId = null;
+
+// Comparison View State
+let comparisonMode = 'split'; // 'split' or 'side-by-side'
+let zoomLevel = 1;
+let isPanning = false;
+let panStart = { x: 0, y: 0 };
+let panOffset = { x: 0, y: 0 };
+
+// Real-time Preview State
+let previewDebounceTimer = null;
+let isPreviewEnabled = false;
+let originalImageData = null;
+let restoredImageData = null;
+
 // DOM Elements
 const uploadZone = document.getElementById('uploadZone');
 const imageInput = document.getElementById('imageInput');
@@ -59,6 +76,8 @@ const extractOCR = document.getElementById('extractOCR');
 async function init() {
   await checkHealth();
   await loadJobs();
+  loadCustomPresets();
+  initializeDefaultPresets();
   connectWebSocket();
   setupEventListeners();
 }
@@ -187,6 +206,91 @@ function setupEventListeners() {
   // Restore button
   restoreBtn.addEventListener('click', startRestoration);
 
+  // Preset controls
+  const presetSelector = document.getElementById('presetSelector');
+  const savePresetBtn = document.getElementById('savePresetBtn');
+  const deletePresetBtn = document.getElementById('deletePresetBtn');
+  
+  if (presetSelector) presetSelector.addEventListener('change', onPresetChange);
+  if (savePresetBtn) savePresetBtn.addEventListener('click', openSavePresetModal);
+  if (deletePresetBtn) deletePresetBtn.addEventListener('click', deletePreset);
+  
+  // Settings change listeners for real-time preview
+  const settingsInputs = [
+    'scale', 'dpi', 'lightingPreset', 'matteComp', 'bleed', 'faceRestore', 'extractOCR'
+  ];
+  
+  settingsInputs.forEach(id => {
+    const element = document.getElementById(id);
+    if (element) {
+      element.addEventListener('change', () => {
+        // Mark as custom settings when changed
+        if (currentPresetId) {
+          document.getElementById('presetSelector').value = '';
+          currentPresetId = null;
+        }
+        
+        // Schedule preview update
+        if (isPreviewEnabled && uploadedFilename) {
+          schedulePreviewUpdate();
+        }
+      });
+    }
+  });
+  
+  // Comparison view controls
+  const closeComparisonBtn = document.getElementById('closeComparisonBtn');
+  if (closeComparisonBtn) closeComparisonBtn.addEventListener('click', closeComparison);
+  
+  // Comparison slider
+  const comparisonSlider = document.getElementById('comparisonSlider');
+  if (comparisonSlider) {
+    comparisonSlider.addEventListener('input', updateSplitView);
+  }
+  
+  // Add direct drag to slider handle
+  const sliderHandle = document.getElementById('sliderButton');
+  if (sliderHandle) {
+    let isDragging = false;
+    
+    const startDrag = (e) => {
+      isDragging = true;
+      e.preventDefault();
+    };
+    
+    const drag = (e) => {
+      if (!isDragging) return;
+      
+      const container = document.querySelector('.image-comparison-slider');
+      if (!container) return;
+      
+      const rect = container.getBoundingClientRect();
+      const x = (e.clientX || e.touches?.[0]?.clientX) - rect.left;
+      const percentage = Math.max(0, Math.min(100, (x / rect.width) * 100));
+      
+      // Update slider value
+      const slider = document.getElementById('comparisonSlider');
+      if (slider) {
+        slider.value = percentage;
+        updateSplitView();
+      }
+    };
+    
+    const stopDrag = () => {
+      isDragging = false;
+    };
+    
+    // Mouse events
+    sliderHandle.addEventListener('mousedown', startDrag);
+    document.addEventListener('mousemove', drag);
+    document.addEventListener('mouseup', stopDrag);
+    
+    // Touch events for mobile
+    sliderHandle.addEventListener('touchstart', startDrag);
+    document.addEventListener('touchmove', drag);
+    document.addEventListener('touchend', stopDrag);
+  }
+  
   console.log('Event listeners initialized');
 }
 
@@ -517,6 +621,270 @@ async function saveMask() {
   }
 }
 
+// ============ PRESET MANAGEMENT ============
+
+function loadCustomPresets() {
+  try {
+    const saved = localStorage.getItem('comicRestorationPresets');
+    if (saved) {
+      customPresets = JSON.parse(saved);
+      updatePresetSelector();
+    }
+  } catch (error) {
+    console.error('Failed to load presets:', error);
+  }
+}
+
+function saveCustomPresets() {
+  try {
+    localStorage.setItem('comicRestorationPresets', JSON.stringify(customPresets));
+  } catch (error) {
+    console.error('Failed to save presets:', error);
+  }
+}
+
+function initializeDefaultPresets() {
+  const defaultPresets = {
+    'golden-age': {
+      name: '📚 Golden Age (1938-1956)',
+      description: 'Optimized for older comics with yellowed paper and faded colors',
+      era: 'golden-age',
+      settings: {
+        scale: 4,
+        dpi: 600,
+        lightingPreset: 'vintage-enhanced',
+        matteComp: 10,
+        bleed: 0.125,
+        faceRestore: false,
+        extractOCR: false
+      },
+      isDefault: true
+    },
+    'silver-age': {
+      name: '✨ Silver Age (1956-1970)',
+      description: 'Balanced restoration for classic comics',
+      era: 'silver-age',
+      settings: {
+        scale: 2,
+        dpi: 300,
+        lightingPreset: 'modern-reprint',
+        matteComp: 7,
+        bleed: 0.125,
+        faceRestore: false,
+        extractOCR: false
+      },
+      isDefault: true
+    },
+    'bronze-age': {
+      name: '🥉 Bronze Age (1970-1985)',
+      description: 'Modern look with subtle enhancements',
+      era: 'bronze-age',
+      settings: {
+        scale: 2,
+        dpi: 300,
+        lightingPreset: 'subtle',
+        matteComp: 5,
+        bleed: 0.125,
+        faceRestore: true,
+        extractOCR: false
+      },
+      isDefault: true
+    },
+    'modern-age': {
+      name: '🆕 Modern Age (1985+)',
+      description: 'High quality scan with minimal processing',
+      era: 'modern-age',
+      settings: {
+        scale: 2,
+        dpi: 300,
+        lightingPreset: 'dramatic',
+        matteComp: 3,
+        bleed: 0.125,
+        faceRestore: true,
+        extractOCR: true
+      },
+      isDefault: true
+    }
+  };
+
+  // Merge with custom presets (don't overwrite custom ones)
+  Object.keys(defaultPresets).forEach(key => {
+    if (!customPresets[key] || customPresets[key].isDefault) {
+      customPresets[key] = defaultPresets[key];
+    }
+  });
+
+  updatePresetSelector();
+}
+
+function updatePresetSelector() {
+  const selector = document.getElementById('presetSelector');
+  if (!selector) return;
+
+  const currentValue = selector.value;
+  
+  // Clear existing options except "Custom Settings"
+  selector.innerHTML = '<option value="">Custom Settings</option>';
+  
+  // Add presets
+  Object.entries(customPresets).forEach(([id, preset]) => {
+    const option = document.createElement('option');
+    option.value = id;
+    option.textContent = preset.name;
+    selector.appendChild(option);
+  });
+  
+  // Restore selection
+  selector.value = currentValue;
+}
+
+function getCurrentSettings() {
+  return {
+    scale: parseInt(document.getElementById('scale').value),
+    dpi: parseInt(document.getElementById('dpi').value),
+    lightingPreset: document.getElementById('lightingPreset').value,
+    matteComp: parseInt(document.getElementById('matteComp').value),
+    bleed: parseFloat(document.getElementById('bleed').value),
+    faceRestore: document.getElementById('faceRestore').checked,
+    extractOCR: document.getElementById('extractOCR').checked
+  };
+}
+
+function applySettings(settings) {
+  document.getElementById('scale').value = settings.scale || 2;
+  document.getElementById('dpi').value = settings.dpi || 300;
+  document.getElementById('lightingPreset').value = settings.lightingPreset || 'modern-reprint';
+  document.getElementById('matteComp').value = settings.matteComp || 5;
+  document.getElementById('bleed').value = settings.bleed || 0.125;
+  document.getElementById('faceRestore').checked = settings.faceRestore || false;
+  document.getElementById('extractOCR').checked = settings.extractOCR || false;
+  
+  // Trigger preview update if enabled
+  if (isPreviewEnabled && uploadedFilename) {
+    schedulePreviewUpdate();
+  }
+}
+
+function openSavePresetModal() {
+  const modal = document.getElementById('savePresetModal');
+  modal.classList.add('active');
+  
+  // Clear inputs
+  document.getElementById('presetName').value = '';
+  document.getElementById('presetDescription').value = '';
+  document.getElementById('presetEra').value = '';
+}
+
+function closeSavePresetModal() {
+  const modal = document.getElementById('savePresetModal');
+  modal.classList.remove('active');
+}
+
+function confirmSavePreset() {
+  const name = document.getElementById('presetName').value.trim();
+  const description = document.getElementById('presetDescription').value.trim();
+  const era = document.getElementById('presetEra').value;
+  
+  if (!name) {
+    alert('Please enter a preset name.');
+    return;
+  }
+  
+  // Generate ID from name
+  const id = 'custom-' + name.toLowerCase().replace(/[^a-z0-9]/g, '-');
+  
+  // Check if preset already exists
+  if (customPresets[id] && customPresets[id].isDefault) {
+    alert('Cannot overwrite default preset. Please choose a different name.');
+    return;
+  }
+  
+  // Save preset
+  customPresets[id] = {
+    name: name,
+    description: description,
+    era: era,
+    settings: getCurrentSettings(),
+    isDefault: false
+  };
+  
+  saveCustomPresets();
+  updatePresetSelector();
+  
+  // Select the new preset
+  document.getElementById('presetSelector').value = id;
+  currentPresetId = id;
+  
+  closeSavePresetModal();
+  
+  // Show success message
+  showNotification('✅ Preset saved successfully!', 'success');
+}
+
+function deletePreset() {
+  const selector = document.getElementById('presetSelector');
+  const selectedId = selector.value;
+  
+  if (!selectedId) {
+    alert('Please select a preset to delete.');
+    return;
+  }
+  
+  const preset = customPresets[selectedId];
+  
+  if (preset.isDefault) {
+    alert('Cannot delete default presets.');
+    return;
+  }
+  
+  if (!confirm(`Delete preset "${preset.name}"?`)) {
+    return;
+  }
+  
+  delete customPresets[selectedId];
+  saveCustomPresets();
+  updatePresetSelector();
+  
+  // Reset to custom settings
+  selector.value = '';
+  currentPresetId = null;
+  
+  showNotification('🗑️ Preset deleted', 'success');
+}
+
+function onPresetChange() {
+  const selector = document.getElementById('presetSelector');
+  const selectedId = selector.value;
+  
+  if (!selectedId) {
+    currentPresetId = null;
+    return;
+  }
+  
+  const preset = customPresets[selectedId];
+  if (preset) {
+    currentPresetId = selectedId;
+    applySettings(preset.settings);
+    
+    // Show notification
+    const desc = preset.description ? `\n${preset.description}` : '';
+    showNotification(`📋 Applied: ${preset.name}${desc}`, 'success');
+  }
+}
+
+function showNotification(message, type = 'success') {
+  const alertClass = type === 'success' ? 'alert-success' : 'alert-warning';
+  apiWarning.innerHTML = `
+    <div class="alert ${alertClass}">
+      <div>${message}</div>
+    </div>
+  `;
+  
+  setTimeout(() => {
+    apiWarning.innerHTML = '';
+  }, 3000);
+}
+
 // ============ RESTORATION ============
 
 async function startRestoration() {
@@ -701,8 +1069,11 @@ function createJobCard(job) {
         </div>
         <div class="job-actions">
           ${job.status === 'completed' ? `
+            <button class="btn btn-small" onclick="viewComparison('${job.filename}', '${job.outputFilename}')" title="Compare before/after">
+              🔄 Compare
+            </button>
             <button class="btn btn-small btn-success" onclick="downloadJob(${job.id}, '${job.outputFilename}')">
-              📥 Download Image
+              📥 Download
             </button>
           ` : ''}
           <button class="btn btn-small btn-danger" onclick="deleteJob(${job.id})">
@@ -742,12 +1113,158 @@ function downloadJob(jobId, filename) {
   window.location.href = `/api/download/${filename}`;
 }
 
+function viewComparison(originalFilename, restoredFilename) {
+  const originalUrl = `/api/preview/${originalFilename}`;
+  const restoredUrl = `/api/download/${restoredFilename}`;
+  
+  showComparison(originalUrl, restoredUrl);
+  
+  // Scroll to comparison
+  document.getElementById('comparisonContainer').scrollIntoView({ behavior: 'smooth' });
+}
+
 // ============ UTILITIES ============
 
 function formatFileSize(bytes) {
   if (bytes < 1024) return bytes + ' B';
   if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
   return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+}
+
+// ============ COMPARISON VIEW ============
+
+function showComparison(originalUrl, restoredUrl) {
+  const comparisonContainer = document.getElementById('comparisonContainer');
+  
+  // Store image data
+  originalImageData = originalUrl;
+  restoredImageData = restoredUrl;
+  
+  // Load before image first to get dimensions
+  const beforeImgSplit = document.getElementById('beforeImageSplit');
+  const afterImgSplit = document.getElementById('afterImageSplit');
+  
+  beforeImgSplit.onload = () => {
+    // Match after image dimensions exactly to before image
+    const width = beforeImgSplit.offsetWidth;
+    const height = beforeImgSplit.offsetHeight;
+    
+    afterImgSplit.style.width = width + 'px';
+    afterImgSplit.style.height = height + 'px';
+  };
+  
+  afterImgSplit.onload = () => {
+    // Ensure sizing is correct after after image loads too
+    const width = beforeImgSplit.offsetWidth;
+    const height = beforeImgSplit.offsetHeight;
+    
+    afterImgSplit.style.width = width + 'px';
+    afterImgSplit.style.height = height + 'px';
+  };
+  
+  // Load images for split view
+  beforeImgSplit.src = originalUrl;
+  afterImgSplit.src = restoredUrl;
+  
+  // Show container
+  comparisonContainer.style.display = 'block';
+}
+
+function closeComparison() {
+  const comparisonContainer = document.getElementById('comparisonContainer');
+  comparisonContainer.style.display = 'none';
+  
+  // Reset state
+  originalImageData = null;
+  restoredImageData = null;
+}
+
+function updateSplitView() {
+  const slider = document.getElementById('comparisonSlider');
+  const afterWrapper = document.querySelector('.after-image-wrapper');
+  const sliderButton = document.getElementById('sliderButton');
+  const beforeImg = document.getElementById('beforeImageSplit');
+  const afterImg = document.getElementById('afterImageSplit');
+  
+  const value = slider.value;
+  
+  // Update wrapper width to clip the after image
+  afterWrapper.style.width = value + '%';
+  sliderButton.style.left = value + '%';
+  
+  // Ensure both images are exactly the same size
+  if (beforeImg.offsetWidth > 0 && beforeImg.offsetHeight > 0) {
+    afterImg.style.width = beforeImg.offsetWidth + 'px';
+    afterImg.style.height = beforeImg.offsetHeight + 'px';
+  }
+}
+
+// ============ REAL-TIME PREVIEW ============
+
+function schedulePreviewUpdate() {
+  // Clear existing timer
+  if (previewDebounceTimer) {
+    clearTimeout(previewDebounceTimer);
+  }
+  
+  // Schedule new preview update
+  previewDebounceTimer = setTimeout(() => {
+    updatePreview();
+  }, 1000); // 1 second debounce
+}
+
+async function updatePreview() {
+  if (!uploadedFilename) return;
+  
+  try {
+    // Show loading indicator
+    const previewImg = document.getElementById('previewImage');
+    previewImg.style.opacity = '0.5';
+    
+    // Get current settings
+    const settings = getCurrentSettings();
+    
+    // Request preview from server
+    const response = await fetch('/api/preview-with-settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        filename: uploadedFilename,
+        settings: settings
+      })
+    });
+    
+    if (response.ok) {
+      const blob = await response.blob();
+      const previewUrl = URL.createObjectURL(blob);
+      
+      // Update preview image
+      previewImg.src = previewUrl;
+      previewImg.style.opacity = '1';
+      
+      // Update comparison if active
+      if (originalImageData && restoredImageData) {
+        showComparison(originalImageData, previewUrl);
+      }
+    }
+  } catch (error) {
+    console.error('Preview update failed:', error);
+    // Silently fail - don't interrupt user workflow
+  }
+}
+
+function enableRealTimePreview() {
+  isPreviewEnabled = true;
+  if (uploadedFilename) {
+    schedulePreviewUpdate();
+  }
+}
+
+function disableRealTimePreview() {
+  isPreviewEnabled = false;
+  if (previewDebounceTimer) {
+    clearTimeout(previewDebounceTimer);
+  }
 }
 
 // ============ START ============

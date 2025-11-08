@@ -67,6 +67,7 @@ export async function samplePaperColor(imageBuffer, options = {}) {
 
   // Calculate median values (more robust than mean)
   const median = (arr) => {
+    if (arr.length === 0) return 240; // Default to neutral white if no samples
     const sorted = arr.sort((a, b) => a - b);
     return sorted[Math.floor(sorted.length / 2)];
   };
@@ -100,9 +101,15 @@ export async function removeColorCast(imageBuffer, options = {}) {
 
   // Calculate cast correction multipliers
   const avgPaper = (paperColor.r + paperColor.g + paperColor.b) / 3;
-  const redAdjust = (avgPaper / paperColor.r) * strength + (1 - strength);
-  const greenAdjust = (avgPaper / paperColor.g) * strength + (1 - strength);
-  const blueAdjust = (avgPaper / paperColor.b) * strength + (1 - strength);
+  
+  // Prevent division by zero
+  const safeR = paperColor.r || 240;
+  const safeG = paperColor.g || 240;
+  const safeB = paperColor.b || 240;
+  
+  const redAdjust = (avgPaper / safeR) * strength + (1 - strength);
+  const greenAdjust = (avgPaper / safeG) * strength + (1 - strength);
+  const blueAdjust = (avgPaper / safeB) * strength + (1 - strength);
 
   console.log(`Cast correction: R×${redAdjust.toFixed(3)} G×${greenAdjust.toFixed(3)} B×${blueAdjust.toFixed(3)}`);
 
@@ -150,8 +157,8 @@ export async function removeColorCast(imageBuffer, options = {}) {
  */
 export async function applyLevels(imageBuffer, options = {}) {
   const {
-    whitePoint = 235,      // Lift whites (guardrail) - REDUCED
-    blackPoint = 15,       // Deepen blacks (guardrail) - INCREASED
+    whitePoint = 250,      // Lift whites (guardrail) - SAFER
+    blackPoint = 5,        // Deepen blacks (guardrail) - MUCH SAFER
     midtone = 1.0,         // Gamma adjustment
     protectMidtones = true // Keep mid-tones from crushing
   } = options;
@@ -505,8 +512,8 @@ export async function applyColorCorrection(imageBuffer, options = {}) {
     removeCast = true,
     castStrength = 0.7,
     applyLevelsAdjust = true,
-    whitePoint = 245,
-    blackPoint = 12,
+    whitePoint = 250,
+    blackPoint = 5,
     applySaturation = true,
     applyLocalContrast = true,
     addGrain = false,

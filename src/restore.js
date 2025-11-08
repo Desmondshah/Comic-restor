@@ -41,52 +41,110 @@ export async function upscale(input, options = {}) {
   } = options;
 
   // Read input as buffer
-  const imageBuffer = Buffer.isBuffer(input) 
+  let imageBuffer = Buffer.isBuffer(input) 
     ? input 
     : fs.readFileSync(input);
   
-  const base64Image = imageBuffer.toString("base64");
+  // Preprocess: Resize large images to prevent GPU OOM
+  // Max dimension 2048px before upscaling
+  const sharp = (await import('sharp')).default;
+  const metadata = await sharp(imageBuffer).metadata();
+  const maxDimension = Math.max(metadata.width, metadata.height);
+  
+  if (maxDimension > 2048) {
+    console.log(`⚠️  Image too large (${metadata.width}x${metadata.height}), resizing to prevent GPU OOM...`);
+    const scaleFactor = 2048 / maxDimension;
+    imageBuffer = await sharp(imageBuffer)
+      .resize({
+        width: Math.round(metadata.width * scaleFactor),
+        height: Math.round(metadata.height * scaleFactor),
+        fit: 'inside',
+        withoutEnlargement: true
+      })
+      .png()
+      .toBuffer();
+    console.log(`   Resized to fit within 2048px`);
+  }
+  
+  let base64Image = imageBuffer.toString("base64");
 
   console.log(`Upscaling with Real-ESRGAN (scale: ${scale}x)...`);
   
-  try {
-    const output = await replicate.run(
-      "nightmareai/real-esrgan:42fed1c4974146d4d2414e2be2c5277c7fcf05fcc3a73abf41610695738c1d7b",
-      {
-        input: {
-          image: `data:image/jpeg;base64,${base64Image}`,
-          scale: scale,
-          face_enhance: faceEnhance
+  // Retry logic for GPU OOM errors
+  const maxRetries = 3;
+  let lastError;
+  
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      const output = await replicate.run(
+        "nightmareai/real-esrgan:42fed1c4974146d4d2414e2be2c5277c7fcf05fcc3a73abf41610695738c1d7b",
+        {
+          input: {
+            image: `data:image/jpeg;base64,${base64Image}`,
+            scale: scale,
+            face_enhance: faceEnhance
+          }
+        }
+      );
+
+      // Handle output URL or base64
+      let resultBuffer;
+      if (typeof output === 'string' && output.startsWith('http')) {
+        const response = await fetch(output);
+        resultBuffer = Buffer.from(await response.arrayBuffer());
+      } else if (typeof output === 'string' && output.includes('base64')) {
+        resultBuffer = Buffer.from(output.split(",")[1], "base64");
+      } else {
+        throw new Error("Unexpected output format from Real-ESRGAN");
+      }
+
+      // Ensure the buffer is in a valid format Sharp can work with
+      try {
+        return await sharp(resultBuffer).png().toBuffer();
+      } catch (formatError) {
+        console.error("Error converting upscaled image:", formatError.message);
+        // If conversion fails, return original buffer
+        return resultBuffer;
+      }
+    } catch (error) {
+      lastError = error;
+      
+      // Check if it's a GPU OOM error
+      if (error.message && error.message.includes('CUDA out of memory')) {
+        console.error(`⚠️  GPU OOM error on attempt ${attempt}/${maxRetries}`);
+        
+        if (attempt < maxRetries) {
+          // Wait before retrying (exponential backoff)
+          const waitTime = Math.pow(2, attempt) * 1000; // 2s, 4s, 8s
+          console.log(`   Waiting ${waitTime/1000}s before retry...`);
+          await new Promise(resolve => setTimeout(resolve, waitTime));
+          
+          // Try reducing image size further if we have retries left
+          if (attempt === 2) {
+            console.log(`   Further reducing image size...`);
+            const currentMeta = await sharp(imageBuffer).metadata();
+            imageBuffer = await sharp(imageBuffer)
+              .resize({
+                width: Math.round(currentMeta.width * 0.75),
+                height: Math.round(currentMeta.height * 0.75),
+                fit: 'inside'
+              })
+              .png()
+              .toBuffer();
+            base64Image = imageBuffer.toString("base64");
+          }
+          continue;
         }
       }
-    );
-
-    // Handle output URL or base64
-    let resultBuffer;
-    if (typeof output === 'string' && output.startsWith('http')) {
-      const response = await fetch(output);
-      resultBuffer = Buffer.from(await response.arrayBuffer());
-    } else if (typeof output === 'string' && output.includes('base64')) {
-      resultBuffer = Buffer.from(output.split(",")[1], "base64");
-    } else {
-      throw new Error("Unexpected output format from Real-ESRGAN");
+      
+      // Not a GPU error or out of retries
+      console.error("Upscale error:", error.message);
+      throw error;
     }
-
-    // Import sharp dynamically to ensure proper format
-    const sharp = (await import('sharp')).default;
-    
-    // Ensure the buffer is in a valid format Sharp can work with
-    try {
-      return await sharp(resultBuffer).png().toBuffer();
-    } catch (formatError) {
-      console.error("Error converting upscaled image:", formatError.message);
-      // If conversion fails, return original buffer
-      return resultBuffer;
-    }
-  } catch (error) {
-    console.error("Upscale error:", error.message);
-    throw error;
   }
+  
+  // If we get here, all retries failed
+  throw new Error(`Upscale failed after ${maxRetries} attempts: ${lastError.message}`);
 }
 
 /**

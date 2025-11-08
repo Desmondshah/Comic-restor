@@ -451,6 +451,254 @@
         grid-template-columns: 1fr;
       }
     }
+
+    /* Comparison Container */
+    .comparison-container {
+      margin: 20px 0;
+      padding: 20px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+    }
+
+    /* Split View Styles */
+    .image-comparison-slider {
+      position: relative;
+      overflow: hidden;
+      border-radius: 8px;
+      max-width: 100%;
+      margin: 0 auto;
+      line-height: 0;
+    }
+
+    .comparison-images {
+      position: relative;
+      width: 100%;
+      display: inline-block;
+      line-height: 0;
+    }
+
+    .comparison-image {
+      max-width: 100%;
+      max-height: 600px;
+      display: block;
+      user-select: none;
+      pointer-events: none;
+      width: 100%;
+      height: auto;
+    }
+
+    .before-image {
+      display: block;
+      width: 100%;
+    }
+
+    .after-image-wrapper {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      overflow: hidden;
+      width: 50%;
+      clip-path: inset(0 0 0 0);
+    }
+
+    .after-image {
+      display: block;
+      position: absolute;
+      top: 0;
+      left: 0;
+      max-width: none;
+      max-height: 600px;
+      height: auto;
+    }
+
+    .comparison-slider {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      opacity: 0;
+      cursor: ew-resize;
+      z-index: 10;
+      margin: 0;
+    }
+
+    .slider-button {
+      position: absolute;
+      top: 0;
+      left: 50%;
+      transform: translateX(-50%);
+      height: 100%;
+      width: 4px;
+      background: transparent;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      pointer-events: none;
+      z-index: 5;
+    }
+
+    .slider-line {
+      flex: 1;
+      width: 3px;
+      background: white;
+      box-shadow: 0 0 8px rgba(0,0,0,0.5);
+    }
+
+    .slider-handle {
+      width: 64px;
+      height: 64px;
+      background: white;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 2px 16px rgba(0,0,0,0.4);
+      font-size: 24px;
+      color: var(--bg);
+      font-weight: bold;
+      cursor: ew-resize;
+      pointer-events: all;
+      transition: transform 0.1s;
+    }
+
+    .slider-handle:hover {
+      transform: scale(1.1);
+    }
+
+    .slider-handle:active {
+      transform: scale(0.95);
+    }
+
+    /* Side-by-Side View */
+    .side-by-side-container {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 15px;
+    }
+
+    .side-panel {
+      position: relative;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      overflow: hidden;
+      background: var(--bg);
+    }
+
+    .panel-label {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      background: rgba(0, 0, 0, 0.7);
+      color: white;
+      padding: 5px 12px;
+      border-radius: 4px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      z-index: 10;
+    }
+
+    .zoom-controls {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      display: flex;
+      gap: 5px;
+      z-index: 10;
+    }
+
+    .image-viewport {
+      width: 100%;
+      height: 600px;
+      overflow: auto;
+      position: relative;
+      background: var(--bg);
+      cursor: grab;
+    }
+
+    .image-viewport:active {
+      cursor: grabbing;
+    }
+
+    .zoomable-image {
+      display: block;
+      max-width: none;
+      transition: transform 0.1s ease-out;
+      transform-origin: 0 0;
+    }
+
+    /* Preset Modal */
+    .modal {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.8);
+      z-index: 1000;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .modal.active {
+      display: flex;
+    }
+
+    .modal-content {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 30px;
+      max-width: 500px;
+      width: 90%;
+    }
+
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+    }
+
+    .modal-header h3 {
+      margin: 0;
+    }
+
+    .modal-close {
+      background: none;
+      border: none;
+      color: var(--text);
+      font-size: 1.5rem;
+      cursor: pointer;
+      padding: 0;
+      width: 30px;
+      height: 30px;
+    }
+
+    .modal-body {
+      margin-bottom: 20px;
+    }
+
+    .modal-footer {
+      display: flex;
+      gap: 10px;
+      justify-content: flex-end;
+    }
+
+    @media (max-width: 768px) {
+      .side-by-side-container {
+        grid-template-columns: 1fr;
+      }
+
+      .image-viewport {
+        height: 400px;
+      }
+    }
   </style>
 </head>
 <body>
@@ -494,6 +742,34 @@
         <!-- Preview -->
         <div id="previewContainer" class="preview-container" style="display: none;">
           <img id="previewImage" class="preview-image" alt="Preview">
+        </div>
+
+        <!-- Before/After Comparison -->
+        <div id="comparisonContainer" class="comparison-container" style="display: none;">
+          <div style="margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center;">
+            <h3 style="margin: 0;">🔄 Before/After Comparison</h3>
+            <button class="btn btn-small" id="closeComparisonBtn">✕ Close</button>
+          </div>
+
+          <!-- Split View -->
+          <div id="splitViewMode" class="split-view-mode">
+            <div class="image-comparison-slider">
+              <div class="comparison-images">
+                <img id="beforeImageSplit" class="comparison-image before-image" alt="Before">
+                <div class="after-image-wrapper">
+                  <img id="afterImageSplit" class="comparison-image after-image" alt="After">
+                </div>
+              </div>
+              <input type="range" min="0" max="100" value="50" class="comparison-slider" id="comparisonSlider">
+              <div class="slider-button" id="sliderButton">
+                <div class="slider-line"></div>
+                <div class="slider-handle">
+                  <span>⇆</span>
+                </div>
+                <div class="slider-line"></div>
+              </div>
+            </div>
+          </div>
         </div>
 
         <!-- Damage Mask Editor -->
@@ -543,6 +819,26 @@
               ❌ Cancel
             </button>
           </div>
+        </div>
+
+        <!-- Preset Management -->
+        <h3 style="margin: 30px 0 15px 0;">💾 Presets</h3>
+        <div style="display: grid; grid-template-columns: 1fr auto auto; gap: 10px; margin-bottom: 20px;">
+          <div class="form-group" style="margin: 0;">
+            <select id="presetSelector" style="width: 100%;">
+              <option value="">Custom Settings</option>
+              <option value="golden-age">📚 Golden Age (1938-1956)</option>
+              <option value="silver-age">✨ Silver Age (1956-1970)</option>
+              <option value="bronze-age">🥉 Bronze Age (1970-1985)</option>
+              <option value="modern-age">🆕 Modern Age (1985+)</option>
+            </select>
+          </div>
+          <button class="btn btn-small" id="savePresetBtn" title="Save current settings as a preset">
+            💾 Save
+          </button>
+          <button class="btn btn-small btn-danger" id="deletePresetBtn" title="Delete selected preset">
+            🗑️
+          </button>
         </div>
 
         <!-- Settings -->
@@ -630,6 +926,40 @@
         <a href="#" onclick="window.open('/api/config', '_blank'); return false;" style="color: var(--primary);">API</a>
       </p>
     </footer>
+  </div>
+
+  <!-- Save Preset Modal -->
+  <div id="savePresetModal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>💾 Save Preset</h3>
+        <button class="modal-close" onclick="closeSavePresetModal()">×</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label>Preset Name</label>
+          <input type="text" id="presetName" placeholder="e.g., My Golden Age Settings" style="width: 100%;">
+        </div>
+        <div class="form-group">
+          <label>Description (Optional)</label>
+          <input type="text" id="presetDescription" placeholder="e.g., High contrast for 1940s comics" style="width: 100%;">
+        </div>
+        <div class="form-group">
+          <label>Era Type</label>
+          <select id="presetEra" style="width: 100%;">
+            <option value="">Custom</option>
+            <option value="golden-age">Golden Age (1938-1956)</option>
+            <option value="silver-age">Silver Age (1956-1970)</option>
+            <option value="bronze-age">Bronze Age (1970-1985)</option>
+            <option value="modern-age">Modern Age (1985+)</option>
+          </select>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn" onclick="closeSavePresetModal()">Cancel</button>
+        <button class="btn btn-success" onclick="confirmSavePreset()">Save Preset</button>
+      </div>
+    </div>
   </div>
 
   <script src="app.js"></script>
