@@ -22,12 +22,19 @@ export async function applyMatteCompensation(imageBuffer, midtoneLift = 5) {
 
   console.log(`Applying matte paper compensation (+${midtoneLift} midtones)...`);
 
+  // Debug: Check input buffer
+  console.log(`  Input buffer size: ${imageBuffer.length} bytes`);
+  
   // Ensure buffer is in a supported format (convert to PNG if needed)
   try {
+    const metadata = await sharp(imageBuffer).metadata();
+    console.log(`  Input format: ${metadata.format}, ${metadata.width}x${metadata.height}`);
     imageBuffer = await sharp(imageBuffer).png().toBuffer();
+    console.log(`  Converted to PNG: ${imageBuffer.length} bytes`);
   } catch (error) {
     console.error("Error converting image format:", error.message);
-    throw new Error("Unsupported image format. Please use JPG, PNG, or TIFF.");
+    console.error("Buffer preview (first 100 bytes):", imageBuffer.slice(0, 100));
+    throw new Error(`Unsupported image format in applyMatteCompensation: ${error.message}`);
   }
 
   // Create a curve that lifts midtones while protecting blacks and whites
@@ -50,38 +57,50 @@ export async function applyMatteCompensation(imageBuffer, midtoneLift = 5) {
 
   const curve = createCurve(midtoneLift);
 
-  // Apply curve using recomb with the curve as a lookup table
-  // Convert curve to array for Sharp
-  const curveArray = Array.from(curve);
-  
-  return await sharp(imageBuffer)
-    .toColourspace('srgb')
-    .raw()
-    .toBuffer({ resolveWithObject: true })
-    .then(async ({ data, info }) => {
-      // Apply curve to each pixel
-      const output = Buffer.from(data);
-      for (let i = 0; i < data.length; i++) {
-        output[i] = curve[data[i]];
+  // Apply curve using raw pixel manipulation
+  try {
+    const { data, info } = await sharp(imageBuffer)
+      .ensureAlpha() // Ensure we have an alpha channel
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+    
+    console.log(`  Processing ${info.width}x${info.height}, ${info.channels} channels`);
+
+    // Apply curve to each pixel (RGB channels only, preserve alpha)
+    const output = Buffer.from(data);
+    const channels = info.channels; // Should be 4 (RGBA)
+    
+    for (let i = 0; i < data.length; i += channels) {
+      // Apply curve to R, G, B (first 3 channels)
+      output[i] = curve[data[i]];       // R
+      output[i + 1] = curve[data[i + 1]]; // G
+      output[i + 2] = curve[data[i + 2]]; // B
+      // Keep alpha as-is: output[i + 3] = data[i + 3];
+    }
+    
+    const result = await sharp(output, {
+      raw: {
+        width: info.width,
+        height: info.height,
+        channels: info.channels
       }
-      
-      return await sharp(output, {
-        raw: {
-          width: info.width,
-          height: info.height,
-          channels: info.channels
-        }
-      })
-      .toColourspace('srgb')
-      .toBuffer();
-    });
+    })
+    .png()
+    .toBuffer();
+    
+    console.log(`  Matte compensation complete: ${result.length} bytes`);
+    return result;
+  } catch (error) {
+    console.error("❌ Error in matte compensation:", error.message);
+    throw new Error(`Matte compensation failed: ${error.message}`);
+  }
 }
 
 /**
  * Prepare image for print with proper sizing and bleed
  * @param {Buffer} imageBuffer - Input image buffer
  * @param {Object} options - Print specifications
- * @returns {Promise<Buffer>} Print-ready image buffer
+ * @returns {Promise<{buffer: Buffer, dimensions: Object}>} Print-ready image buffer and actual dimensions
  */
 export async function prepareForPrint(imageBuffer, options = {}) {
   const {
@@ -89,22 +108,27 @@ export async function prepareForPrint(imageBuffer, options = {}) {
     heightIn = 10.25,     // Standard comic height
     dpi = 300,            // Print resolution
     bleedIn = 0.125,      // 1/8" bleed on all sides
-    matteCompensation = 5
+    matteCompensation = 5,
+    adaptiveSize = true   // Adapt page size to image aspect ratio
   } = options;
 
+  console.log(`\n=== prepareForPrint Debug ===`);
+  console.log(`Input buffer type: ${Buffer.isBuffer(imageBuffer) ? 'Buffer' : typeof imageBuffer}`);
+  console.log(`Input buffer size: ${imageBuffer ? imageBuffer.length : 'null'} bytes`);
+
   // Ensure buffer is in a supported format first
+  let metadata;
   try {
+    metadata = await sharp(imageBuffer).metadata();
+    console.log(`Input format: ${metadata.format}, ${metadata.width}x${metadata.height}, channels: ${metadata.channels}`);
+    
     imageBuffer = await sharp(imageBuffer).png().toBuffer();
+    console.log(`Converted to PNG: ${imageBuffer.length} bytes`);
   } catch (error) {
-    console.error("Error reading image format:", error.message);
-    throw new Error("Unsupported image format. Please use JPG, PNG, or TIFF.");
+    console.error("❌ Error reading image format:", error.message);
+    console.error("Buffer preview (first 100 bytes):", imageBuffer.slice(0, 100));
+    throw new Error(`Unsupported image format in prepareForPrint: ${error.message}`);
   }
-
-  // Calculate pixel dimensions with bleed
-  const pxWidth = Math.round((widthIn + bleedIn * 2) * dpi);
-  const pxHeight = Math.round((heightIn + bleedIn * 2) * dpi);
-
-  console.log(`Preparing for print: ${pxWidth}x${pxHeight}px (${widthIn + bleedIn * 2}"x${heightIn + bleedIn * 2}" @ ${dpi} DPI)`);
 
   // Apply matte compensation first
   let processed = imageBuffer;
@@ -112,10 +136,46 @@ export async function prepareForPrint(imageBuffer, options = {}) {
     processed = await applyMatteCompensation(processed, matteCompensation);
   }
 
-  // Resize to exact print dimensions
+  let finalWidthIn, finalHeightIn;
+  
+  if (adaptiveSize) {
+    // Calculate actual dimensions from image to prevent white space
+    // Keep the image's aspect ratio and scale to appropriate print size
+    const imageAspectRatio = metadata.width / metadata.height;
+    const targetAspectRatio = widthIn / heightIn;
+    
+    if (Math.abs(imageAspectRatio - targetAspectRatio) > 0.1) {
+      // Image has different aspect ratio - adapt the page size
+      if (imageAspectRatio > targetAspectRatio) {
+        // Wider image (horizontal) - keep width, adjust height
+        finalWidthIn = widthIn;
+        finalHeightIn = widthIn / imageAspectRatio;
+      } else {
+        // Taller image (vertical) - keep height, adjust width
+        finalHeightIn = heightIn;
+        finalWidthIn = heightIn * imageAspectRatio;
+      }
+      console.log(`Adaptive sizing: ${finalWidthIn.toFixed(3)}" x ${finalHeightIn.toFixed(3)}" (aspect ratio: ${imageAspectRatio.toFixed(2)})`);
+    } else {
+      // Aspect ratio is close enough - use standard dimensions
+      finalWidthIn = widthIn;
+      finalHeightIn = heightIn;
+    }
+  } else {
+    finalWidthIn = widthIn;
+    finalHeightIn = heightIn;
+  }
+
+  // Calculate pixel dimensions with bleed
+  const pxWidth = Math.round((finalWidthIn + bleedIn * 2) * dpi);
+  const pxHeight = Math.round((finalHeightIn + bleedIn * 2) * dpi);
+
+  console.log(`Preparing for print: ${pxWidth}x${pxHeight}px (${(finalWidthIn + bleedIn * 2).toFixed(3)}"x${(finalHeightIn + bleedIn * 2).toFixed(3)}" @ ${dpi} DPI)`);
+
+  // Resize to print dimensions - use cover to fill the page without white space
   processed = await sharp(processed)
     .resize(pxWidth, pxHeight, {
-      fit: "cover",           // Cover the area, crop if needed
+      fit: "cover",           // Fill the page completely
       position: "center",     // Center the crop
       kernel: "lanczos3"      // High-quality resampling
     })
@@ -123,7 +183,14 @@ export async function prepareForPrint(imageBuffer, options = {}) {
     .png({ compressionLevel: 9, quality: 100 })
     .toBuffer();
 
-  return processed;
+  return {
+    buffer: processed,
+    dimensions: {
+      widthIn: finalWidthIn + bleedIn * 2,
+      heightIn: finalHeightIn + bleedIn * 2,
+      bleedIn
+    }
+  };
 }
 
 /**
@@ -146,8 +213,8 @@ export async function createPrintPDF(imageBuffer, outputPath, options = {}) {
 
   console.log(`Creating print-ready PDF: ${outputPath}`);
 
-  // Prepare image for print
-  const printReady = await prepareForPrint(imageBuffer, {
+  // Prepare image for print (now returns object with buffer and dimensions)
+  const { buffer: printReady, dimensions } = await prepareForPrint(imageBuffer, {
     widthIn,
     heightIn,
     dpi,
@@ -155,9 +222,11 @@ export async function createPrintPDF(imageBuffer, outputPath, options = {}) {
     matteCompensation
   });
 
-  // Calculate PDF dimensions in points (72 points = 1 inch)
-  const pdfWidth = (widthIn + bleedIn * 2) * 72;
-  const pdfHeight = (heightIn + bleedIn * 2) * 72;
+  // Calculate PDF dimensions in points (72 points = 1 inch) using actual dimensions
+  const pdfWidth = dimensions.widthIn * 72;
+  const pdfHeight = dimensions.heightIn * 72;
+
+  console.log(`PDF page size: ${pdfWidth.toFixed(1)}pt x ${pdfHeight.toFixed(1)}pt (${dimensions.widthIn.toFixed(3)}" x ${dimensions.heightIn.toFixed(3)}")`);
 
   // Create PDF
   const pdfDoc = await PDFDocument.create();
@@ -218,10 +287,6 @@ export async function createMultiPagePDF(imageBuffers, outputPath, options = {})
 
   console.log(`Creating multi-page PDF with ${imageBuffers.length} pages...`);
 
-  // Calculate PDF dimensions in points
-  const pdfWidth = (widthIn + bleedIn * 2) * 72;
-  const pdfHeight = (heightIn + bleedIn * 2) * 72;
-
   // Create PDF
   const pdfDoc = await PDFDocument.create();
   
@@ -234,28 +299,43 @@ export async function createMultiPagePDF(imageBuffers, outputPath, options = {})
 
   // Process each page
   for (let i = 0; i < imageBuffers.length; i++) {
-    console.log(`Processing page ${i + 1}/${imageBuffers.length}...`);
+    console.log(`\n=== Processing PDF page ${i + 1}/${imageBuffers.length} ===`);
+    console.log(`Page ${i + 1} buffer type: ${Buffer.isBuffer(imageBuffers[i]) ? 'Buffer' : typeof imageBuffers[i]}`);
+    console.log(`Page ${i + 1} buffer size: ${imageBuffers[i] ? imageBuffers[i].length : 'null'} bytes`);
 
-    // Prepare image for print
-    const printReady = await prepareForPrint(imageBuffers[i], {
-      widthIn,
-      heightIn,
-      dpi,
-      bleedIn,
-      matteCompensation
-    });
+    try {
+      // Prepare image for print (now returns object with buffer and dimensions)
+      const { buffer: printReady, dimensions } = await prepareForPrint(imageBuffers[i], {
+        widthIn,
+        heightIn,
+        dpi,
+        bleedIn,
+        matteCompensation
+      });
 
-    // Add page
-    const page = pdfDoc.addPage([pdfWidth, pdfHeight]);
+      console.log(`✓ Page ${i + 1} prepared: ${printReady.length} bytes`);
 
-    // Embed and draw image
-    const pngImage = await pdfDoc.embedPng(printReady);
-    page.drawImage(pngImage, {
-      x: 0,
-      y: 0,
-      width: pdfWidth,
-      height: pdfHeight
-    });
+      // Calculate page dimensions in points using actual dimensions
+      const pagePdfWidth = dimensions.widthIn * 72;
+      const pagePdfHeight = dimensions.heightIn * 72;
+
+      // Add page with actual dimensions
+      const page = pdfDoc.addPage([pagePdfWidth, pagePdfHeight]);
+
+      // Embed and draw image
+      const pngImage = await pdfDoc.embedPng(printReady);
+      page.drawImage(pngImage, {
+        x: 0,
+        y: 0,
+        width: pagePdfWidth,
+        height: pagePdfHeight
+      });
+
+      console.log(`✓ Page ${i + 1} added to PDF (${dimensions.widthIn.toFixed(3)}" x ${dimensions.heightIn.toFixed(3)}")`);
+    } catch (error) {
+      console.error(`❌ Failed to process page ${i + 1}:`, error.message);
+      throw new Error(`Page ${i + 1} failed: ${error.message}`);
+    }
   }
 
   // Ensure output directory exists

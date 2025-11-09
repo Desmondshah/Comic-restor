@@ -320,6 +320,7 @@ export async function applyClarity(imageBuffer, options = {}) {
       x1: threshold,
       y2: 255
     })
+    .png()
     .toBuffer();
 }
 

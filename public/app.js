@@ -3,7 +3,8 @@
  */
 
 // State
-let uploadedFilename = null;
+let uploadedFiles = []; // Array to store multiple files with their metadata
+let uploadedFilenames = []; // Array of filenames uploaded to server
 let uploadedMaskFilename = null;
 let ws = null;
 let reconnectAttempts = 0;
@@ -47,9 +48,19 @@ const uploadText = document.getElementById('uploadText');
 const maskText = document.getElementById('maskText');
 const previewContainer = document.getElementById('previewContainer');
 const previewImage = document.getElementById('previewImage');
+const batchPreviewContainer = document.getElementById('batchPreviewContainer');
+const batchPreviewGrid = document.getElementById('batchPreviewGrid');
+const imageCount = document.getElementById('imageCount');
+const addMoreBtn = document.getElementById('addMoreBtn');
+const clearAllBtn = document.getElementById('clearAllBtn');
 const restoreBtn = document.getElementById('restoreBtn');
 const jobsList = document.getElementById('jobsList');
 const apiWarning = document.getElementById('apiWarning');
+const exportPDF = document.getElementById('exportPDF');
+
+// Track whether next file selection should append or replace existing uploads
+let nextUploadMode = 'replace';
+let lastButtonClick = 0; // Timestamp of last button click
 
 // Mask Editor Elements
 const createMaskBtn = document.getElementById('createMaskBtn');
@@ -146,9 +157,54 @@ function handleWebSocketMessage(data) {
 // ============ EVENT LISTENERS ============
 
 function setupEventListeners() {
-  // Image upload - click
-  uploadZone.addEventListener('click', () => imageInput.click());
-  imageInput.addEventListener('change', handleImageUpload);
+  const openFilePicker = (mode = 'replace') => {
+    nextUploadMode = mode;
+    imageInput.click();
+  };
+
+  // Image upload - click on main upload zone (replace mode)
+  uploadZone.addEventListener('click', (event) => {
+    // Ignore clicks within 500ms of button clicks
+    const timeSinceButtonClick = Date.now() - lastButtonClick;
+    if (timeSinceButtonClick < 500) {
+      return;
+    }
+    
+    // Don't trigger if clicking on buttons or interactive elements
+    if (event.target.closest('button') || event.target.closest('.batch-preview-container')) {
+      return;
+    }
+    openFilePicker('replace');
+  });
+
+  imageInput.addEventListener('change', () => {
+    const appendMode = nextUploadMode === 'append';
+    handleImageUpload(appendMode);
+    nextUploadMode = 'replace';
+  });
+
+  // Add more button - sets append mode for next selection
+  if (addMoreBtn) {
+    addMoreBtn.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation();
+      lastButtonClick = Date.now();
+      openFilePicker('append');
+    });
+  }
+
+  // Clear all button - clears batch and resets mode
+  if (clearAllBtn) {
+    clearAllBtn.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation();
+      lastButtonClick = Date.now();
+      nextUploadMode = 'replace';
+      clearAllBatchItems();
+    });
+  }
   
   // Image upload - drag & drop
   uploadZone.addEventListener('dragover', (e) => {
@@ -167,7 +223,7 @@ function setupEventListeners() {
     const files = e.dataTransfer.files;
     if (files.length > 0) {
       imageInput.files = files;
-      handleImageUpload();
+      handleImageUpload(false);
     }
   });
   
@@ -248,46 +304,91 @@ function setupEventListeners() {
     comparisonSlider.addEventListener('input', updateSplitView);
   }
   
-  // Add direct drag to slider handle
+  // Add direct drag to entire comparison container for easier interaction
+  const comparisonImages = document.querySelector('.comparison-images');
   const sliderHandle = document.getElementById('sliderButton');
-  if (sliderHandle) {
+  
+  if (comparisonImages && sliderHandle) {
     let isDragging = false;
+    let dragOffset = 0;
+    let animationFrameId = null;
     
-    const startDrag = (e) => {
+    const updatePosition = (e, useOffset = false) => {
+      const container = document.querySelector('.comparison-images');
+      if (!container) return;
+      
+      const rect = container.getBoundingClientRect();
+      let x = (e.clientX || e.touches?.[0]?.clientX) - rect.left;
+      
+      // Apply offset if dragging from handle
+      if (useOffset) {
+        x -= dragOffset;
+      }
+      
+      const percentage = Math.max(0, Math.min(100, (x / rect.width) * 100));
+      
+      // Cancel any pending animation frame
+      if (animationFrameId) {
+        cancelAnimationFrame(animationFrameId);
+      }
+      
+      // Use requestAnimationFrame for smooth 60fps updates
+      animationFrameId = requestAnimationFrame(() => {
+        const slider = document.getElementById('comparisonSlider');
+        if (slider) {
+          slider.value = percentage;
+          updateSplitView();
+        }
+      });
+    };
+    
+    const startDragHandle = (e) => {
       isDragging = true;
+      
+      // Calculate offset from center of handle
+      const handleRect = sliderHandle.getBoundingClientRect();
+      const handleCenterX = handleRect.left + handleRect.width / 2;
+      const mouseX = e.clientX || e.touches?.[0]?.clientX;
+      dragOffset = mouseX - handleCenterX;
+      
+      e.preventDefault();
+      e.stopPropagation();
+    };
+    
+    const startDragImage = (e) => {
+      isDragging = true;
+      dragOffset = 0;
+      updatePosition(e, false); // Immediately snap to click position
       e.preventDefault();
     };
     
     const drag = (e) => {
       if (!isDragging) return;
-      
-      const container = document.querySelector('.image-comparison-slider');
-      if (!container) return;
-      
-      const rect = container.getBoundingClientRect();
-      const x = (e.clientX || e.touches?.[0]?.clientX) - rect.left;
-      const percentage = Math.max(0, Math.min(100, (x / rect.width) * 100));
-      
-      // Update slider value
-      const slider = document.getElementById('comparisonSlider');
-      if (slider) {
-        slider.value = percentage;
-        updateSplitView();
-      }
+      e.preventDefault();
+      updatePosition(e, true); // Use offset during drag
     };
     
     const stopDrag = () => {
       isDragging = false;
+      dragOffset = 0;
+      if (animationFrameId) {
+        cancelAnimationFrame(animationFrameId);
+        animationFrameId = null;
+      }
     };
     
-    // Mouse events
-    sliderHandle.addEventListener('mousedown', startDrag);
+    // Handle-specific events (dragging from handle keeps offset)
+    sliderHandle.addEventListener('mousedown', startDragHandle);
+    sliderHandle.addEventListener('touchstart', startDragHandle);
+    
+    // Image click events (clicking image snaps to position)
+    comparisonImages.addEventListener('mousedown', startDragImage);
+    comparisonImages.addEventListener('touchstart', startDragImage);
+    
+    // Global drag and stop events
     document.addEventListener('mousemove', drag);
     document.addEventListener('mouseup', stopDrag);
-    
-    // Touch events for mobile
-    sliderHandle.addEventListener('touchstart', startDrag);
-    document.addEventListener('touchmove', drag);
+    document.addEventListener('touchmove', drag, { passive: false });
     document.addEventListener('touchend', stopDrag);
   }
   
@@ -296,53 +397,180 @@ function setupEventListeners() {
 
 // ============ FILE UPLOAD ============
 
-async function handleImageUpload() {
-  const file = imageInput.files[0];
-  if (!file) return;
+async function handleImageUpload(appendMode = false) {
+  const files = Array.from(imageInput.files);
+  if (!files.length) return;
   
-  console.log('Uploading file:', file.name, file.size, 'bytes');
+  console.log(`Uploading ${files.length} file(s), append mode: ${appendMode}`);
+  console.log(`Current batch: ${uploadedFiles.length} files`);
   
-  const formData = new FormData();
-  formData.append('image', file);
+  // If not in append mode, clear existing files
+  if (!appendMode) {
+    uploadedFiles = [];
+    uploadedFilenames = [];
+    batchPreviewGrid.innerHTML = '';
+  }
   
   try {
     uploadText.innerHTML = '<div class="spinner"></div> Uploading...';
     
-    const response = await fetch('/api/upload', {
-      method: 'POST',
-      body: formData
-    });
+    // Upload each file
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      
+      // Validate file type
+      const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/tiff', 'image/tif'];
+      if (!validTypes.includes(file.type) && !file.name.match(/\.(jpg|jpeg|png|tiff|tif)$/i)) {
+        console.warn(`Skipping invalid file type: ${file.name} (${file.type})`);
+        continue;
+      }
+      
+      const formData = new FormData();
+      formData.append('image', file);
+      
+      const response = await fetch('/api/upload', {
+        method: 'POST',
+        body: formData
+      });
+      
+      const data = await response.json();
+      console.log(`Upload response for ${file.name}:`, data);
+      
+      if (data.success) {
+        // Store file info
+        uploadedFiles.push({
+          file: file,
+          filename: data.filename,
+          originalName: data.originalName,
+          size: data.size
+        });
+        uploadedFilenames.push(data.filename);
+        
+        // Add to preview grid
+        addBatchPreviewItem(data.filename, data.originalName, uploadedFiles.length);
+      }
+    }
     
-    const data = await response.json();
-    console.log('Upload response:', data);
-    
-    if (data.success) {
-      uploadedFilename = data.filename;
+    // Update UI
+    if (uploadedFiles.length > 0) {
       uploadZone.classList.add('has-file');
       uploadText.innerHTML = `
-        <strong>✓ ${data.originalName}</strong><br>
-        <span style="color: var(--text-muted);">${formatFileSize(data.size)}</span>
+        <strong>✓ ${uploadedFiles.length} file(s) uploaded</strong><br>
+        <span style="color: var(--text-muted);">Click to add more files</span>
       `;
       
-      console.log('uploadedFilename set to:', uploadedFilename);
+      // Show batch preview container
+      batchPreviewContainer.style.display = 'block';
+      imageCount.textContent = uploadedFiles.length;
       
-      // Show preview
-      previewImage.src = `/api/preview/${data.filename}`;
-      previewContainer.style.display = 'block';
+      // Hide single preview
+      previewContainer.style.display = 'none';
       
       // Enable restore button
       restoreBtn.disabled = false;
-      console.log('Restore button enabled');
-    } else {
-      console.error('Upload failed:', data);
+      restoreBtn.innerHTML = uploadedFiles.length > 1 
+        ? `<span>🚀 Restore ${uploadedFiles.length} Images</span>`
+        : `<span>🚀 Start Restoration</span>`;
+      
+      console.log(`✓ Upload complete! Total files: ${uploadedFiles.length}`);
     }
+    
+    // Reset input to allow re-selecting the same files
+    imageInput.value = '';
   } catch (error) {
     console.error('Upload failed:', error);
     uploadText.innerHTML = `
       <strong style="color: var(--danger);">✗ Upload failed</strong><br>
       <span style="color: var(--text-muted);">Click to try again</span>
     `;
+    // Reset input on error too
+    imageInput.value = '';
   }
+}
+
+function addBatchPreviewItem(filename, originalName, pageNumber) {
+  const item = document.createElement('div');
+  item.className = 'batch-preview-item';
+  item.dataset.filename = filename;
+  
+  const img = document.createElement('img');
+  img.src = `/api/preview/${filename}`;
+  img.alt = originalName;
+  
+  const removeBtn = document.createElement('button');
+  removeBtn.className = 'remove-btn';
+  removeBtn.innerHTML = '×';
+  removeBtn.onclick = (e) => {
+    e.stopPropagation();
+    removeBatchItem(filename);
+  };
+  
+  const pageNum = document.createElement('div');
+  pageNum.className = 'page-number';
+  pageNum.textContent = `#${pageNumber}`;
+  
+  item.appendChild(img);
+  item.appendChild(removeBtn);
+  item.appendChild(pageNum);
+  
+  batchPreviewGrid.appendChild(item);
+}
+
+function removeBatchItem(filename) {
+  // Remove from arrays
+  const index = uploadedFilenames.indexOf(filename);
+  if (index > -1) {
+    uploadedFilenames.splice(index, 1);
+    uploadedFiles.splice(index, 1);
+  }
+  
+  // Remove from DOM
+  const item = batchPreviewGrid.querySelector(`[data-filename="${filename}"]`);
+  if (item) {
+    item.remove();
+  }
+  
+  // Update UI
+  imageCount.textContent = uploadedFiles.length;
+  
+  if (uploadedFiles.length === 0) {
+    batchPreviewContainer.style.display = 'none';
+    uploadZone.classList.remove('has-file');
+    uploadText.innerHTML = `
+      <strong>Drag & drop comic scans here</strong><br>
+      <span style="color: var(--text-muted);">or click to browse • Multiple files supported (JPG, PNG, TIFF)</span>
+    `;
+    restoreBtn.disabled = true;
+    restoreBtn.innerHTML = '<span>🚀 Start Restoration</span>';
+  } else {
+    // Renumber remaining items
+    const items = batchPreviewGrid.querySelectorAll('.batch-preview-item');
+    items.forEach((item, index) => {
+      const pageNum = item.querySelector('.page-number');
+      if (pageNum) {
+        pageNum.textContent = `#${index + 1}`;
+      }
+    });
+    
+    restoreBtn.innerHTML = uploadedFiles.length > 1 
+      ? `<span>🚀 Restore ${uploadedFiles.length} Images</span>`
+      : `<span>🚀 Start Restoration</span>`;
+  }
+}
+
+function clearAllBatchItems() {
+  uploadedFiles = [];
+  uploadedFilenames = [];
+  batchPreviewGrid.innerHTML = '';
+  batchPreviewContainer.style.display = 'none';
+  uploadZone.classList.remove('has-file');
+  uploadText.innerHTML = `
+    <strong>Drag & drop comic scans here</strong><br>
+    <span style="color: var(--text-muted);">or click to browse • Multiple files supported (JPG, PNG, TIFF)</span>
+  `;
+  restoreBtn.disabled = true;
+  restoreBtn.innerHTML = '<span>🚀 Start Restoration</span>';
+  imageInput.value = '';
 }
 
 async function handleMaskUpload() {
@@ -381,7 +609,7 @@ async function handleMaskUpload() {
 // ============ MASK EDITOR ============
 
 function openMaskEditor() {
-  if (!uploadedFilename) {
+  if (!uploadedFilenames.length) {
     alert('Please upload an image first before creating a damage mask.');
     return;
   }
@@ -389,6 +617,7 @@ function openMaskEditor() {
   maskEditorActive = true;
   maskEditorContainer.classList.add('active');
   previewContainer.style.display = 'none';
+  batchPreviewContainer.style.display = 'none';
   
   // Initialize canvas
   maskCanvas = document.getElementById('maskCanvas');
@@ -417,13 +646,20 @@ function openMaskEditor() {
     // Setup canvas event listeners
     setupCanvasListeners();
   };
-  baseImage.src = `/api/preview/${uploadedFilename}`;
+  // Use first uploaded file for mask editor
+  baseImage.src = `/api/preview/${uploadedFilenames[0]}`;
 }
 
 function closeMaskEditor() {
   maskEditorActive = false;
   maskEditorContainer.classList.remove('active');
-  previewContainer.style.display = 'block';
+  
+  // Show appropriate preview
+  if (uploadedFilenames.length > 1) {
+    batchPreviewContainer.style.display = 'block';
+  } else {
+    previewContainer.style.display = 'block';
+  }
   
   // Remove canvas listeners
   if (maskCanvas) {
@@ -888,15 +1124,15 @@ function showNotification(message, type = 'success') {
 // ============ RESTORATION ============
 
 async function startRestoration() {
-  console.log('Start restoration clicked. uploadedFilename:', uploadedFilename);
+  console.log('Start restoration clicked. Files:', uploadedFilenames.length);
   
-  if (!uploadedFilename) {
+  if (!uploadedFilenames.length) {
     apiWarning.innerHTML = `
       <div class="alert alert-warning">
         <span>⚠️</span>
         <div>
-          <strong>No Image Uploaded</strong><br>
-          Please upload a comic scan first before starting restoration.
+          <strong>No Images Uploaded</strong><br>
+          Please upload comic scan(s) first before starting restoration.
         </div>
       </div>
     `;
@@ -915,12 +1151,16 @@ async function startRestoration() {
     bleedIn: parseFloat(bleed.value),
     useFaceRestore: faceRestore.checked,
     extractOCR: extractOCR.checked,
+    exportPDF: exportPDF.checked,
     // Lighting options
     lightingPreset: document.getElementById('lightingPreset').value
   };
   
+  // Determine if batch or single restoration
+  const isBatch = uploadedFilenames.length > 1;
+  
   const payload = {
-    filename: uploadedFilename,
+    filenames: uploadedFilenames, // Send array of filenames
     maskFilename: uploadedMaskFilename,
     options
   };
@@ -929,39 +1169,46 @@ async function startRestoration() {
     restoreBtn.disabled = true;
     restoreBtn.innerHTML = '<div class="spinner"></div> Starting...';
     
-    const response = await fetch('/api/restore', {
+    // Use batch endpoint if multiple files
+    const endpoint = isBatch ? '/api/restore-batch' : '/api/restore';
+    const requestPayload = isBatch ? payload : {
+      filename: uploadedFilenames[0],
+      maskFilename: uploadedMaskFilename,
+      options
+    };
+    
+    const response = await fetch(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
+      body: JSON.stringify(requestPayload)
     });
     
     const data = await response.json();
     
     if (data.success) {
       // Reset form
-      uploadedFilename = null;
+      clearAllBatchItems();
       uploadedMaskFilename = null;
-      uploadZone.classList.remove('has-file');
       maskZone.classList.remove('has-file');
-      uploadText.innerHTML = `
-        <strong>Drag & drop comic scan here</strong><br>
-        <span style="color: var(--text-muted);">or click to browse (JPG, PNG, TIFF)</span>
-      `;
       maskText.innerHTML = `
-        <strong>Optional: Damage mask</strong><br>
-        <span style="color: var(--text-muted); font-size: 0.85rem;">White = areas to inpaint</span>
+        <strong>Damage Mask</strong> <span style="color: var(--danger); font-weight: normal;">(Currently Unavailable)</span><br>
+        <span style="color: var(--text-muted); font-size: 0.85rem;">
+          Inpainting models on Replicate are currently unavailable. Use external tools (Photoshop, GIMP) for damage removal.
+        </span>
       `;
-      previewContainer.style.display = 'none';
-      imageInput.value = '';
       maskInput.value = '';
       
       // Show success
+      const jobMessage = isBatch 
+        ? `Batch job #${data.jobId} is processing ${uploadedFilenames.length} images.${options.exportPDF ? ' PDF will be generated.' : ''}`
+        : `Job #${data.jobId} is now processing.`;
+      
       apiWarning.innerHTML = `
         <div class="alert alert-success">
           <span>✓</span>
           <div>
             <strong>Restoration Started!</strong><br>
-            Job #${data.jobId} is now processing. This may take 2-5 minutes.
+            ${jobMessage} This may take ${isBatch ? '5-15' : '2-5'} minutes.
           </div>
         </div>
       `;
@@ -1031,12 +1278,16 @@ function createJobCard(job) {
   }[job.status] || '❓';
   
   const progressWidth = job.progress || 0;
+  const isBatch = job.isBatch || false;
+  const jobTitle = isBatch 
+    ? `Batch Job #${job.id}: ${job.fileCount} images`
+    : `Job #${job.id}: ${job.filename}`;
   
   return `
     <div class="job-card" id="job-${job.id}">
       <div class="job-header">
         <div class="job-title">
-          Job #${job.id}: ${job.filename}
+          ${isBatch ? '📚 ' : ''}${jobTitle}
         </div>
         <div class="job-status ${statusClass}">
           <span>${statusIcon}</span>
@@ -1050,6 +1301,22 @@ function createJobCard(job) {
         </div>
         <div style="font-size: 0.9rem; color: var(--text-muted); margin-top: 5px;">
           ${job.stage || 'Processing'}... ${progressWidth}%
+          ${isBatch && job.processedCount !== undefined ? ` (${job.processedCount}/${job.fileCount} completed)` : ''}
+        </div>
+      ` : ''}
+      
+      ${job.status === 'completed' && isBatch ? `
+        <div style="color: var(--success); margin-top: 10px; font-size: 0.9rem;">
+          <strong>✓ ${job.successCount || job.fileCount} images restored successfully</strong>
+          ${job.failedCount > 0 ? `<br><span style="color: var(--warning);">${job.failedCount} failed</span>` : ''}
+          ${job.failedFiles && job.failedFiles.length > 0 ? `
+            <details style="margin-top: 8px;">
+              <summary style="cursor: pointer; color: var(--warning);">Show failed files</summary>
+              <ul style="margin: 5px 0 0 20px; font-size: 0.85rem;">
+                ${job.failedFiles.map(f => `<li>${f.filename}: ${f.error}</li>`).join('')}
+              </ul>
+            </details>
+          ` : ''}
         </div>
       ` : ''}
       
@@ -1065,15 +1332,21 @@ function createJobCard(job) {
           ${job.options ? `
             <span class="badge">${job.options.scale}x upscale</span>
             <span class="badge">${job.options.dpi} DPI</span>
+            ${isBatch && job.options.exportPDF ? '<span class="badge">📄 PDF</span>' : ''}
           ` : ''}
         </div>
         <div class="job-actions">
-          ${job.status === 'completed' ? `
+          ${job.status === 'completed' && !isBatch ? `
             <button class="btn btn-small" onclick="viewComparison('${job.filename}', '${job.outputFilename}')" title="Compare before/after">
               🔄 Compare
             </button>
             <button class="btn btn-small btn-success" onclick="downloadJob(${job.id}, '${job.outputFilename}')">
               📥 Download
+            </button>
+          ` : ''}
+          ${job.status === 'completed' && isBatch && job.outputFilename ? `
+            <button class="btn btn-small btn-success" onclick="downloadJob(${job.id}, '${job.outputFilename}')">
+              📥 Download PDF
             </button>
           ` : ''}
           <button class="btn btn-small btn-danger" onclick="deleteJob(${job.id})">
@@ -1144,27 +1417,24 @@ function showComparison(originalUrl, restoredUrl) {
   const beforeImgSplit = document.getElementById('beforeImageSplit');
   const afterImgSplit = document.getElementById('afterImageSplit');
   
-  beforeImgSplit.onload = () => {
-    // Match after image dimensions exactly to before image
-    const width = beforeImgSplit.offsetWidth;
-    const height = beforeImgSplit.offsetHeight;
-    
-    afterImgSplit.style.width = width + 'px';
-    afterImgSplit.style.height = height + 'px';
-  };
-  
   afterImgSplit.onload = () => {
-    // Ensure sizing is correct after after image loads too
-    const width = beforeImgSplit.offsetWidth;
-    const height = beforeImgSplit.offsetHeight;
-    
-    afterImgSplit.style.width = width + 'px';
-    afterImgSplit.style.height = height + 'px';
+    const slider = document.getElementById('comparisonSlider');
+    if (slider) {
+      slider.value = 50;
+    }
+    updateSplitView();
   };
   
   // Load images for split view
   beforeImgSplit.src = originalUrl;
   afterImgSplit.src = restoredUrl;
+  
+  // Reset slider position immediately for instant feedback
+  const slider = document.getElementById('comparisonSlider');
+  if (slider) {
+    slider.value = 50;
+  }
+  updateSplitView();
   
   // Show container
   comparisonContainer.style.display = 'block';
@@ -1183,20 +1453,20 @@ function updateSplitView() {
   const slider = document.getElementById('comparisonSlider');
   const afterWrapper = document.querySelector('.after-image-wrapper');
   const sliderButton = document.getElementById('sliderButton');
-  const beforeImg = document.getElementById('beforeImageSplit');
-  const afterImg = document.getElementById('afterImageSplit');
-  
-  const value = slider.value;
-  
-  // Update wrapper width to clip the after image
-  afterWrapper.style.width = value + '%';
-  sliderButton.style.left = value + '%';
-  
-  // Ensure both images are exactly the same size
-  if (beforeImg.offsetWidth > 0 && beforeImg.offsetHeight > 0) {
-    afterImg.style.width = beforeImg.offsetWidth + 'px';
-    afterImg.style.height = beforeImg.offsetHeight + 'px';
+
+  if (!slider || !afterWrapper || !sliderButton) {
+    return;
   }
+
+  const value = parseFloat(slider.value);
+  if (Number.isNaN(value)) {
+    return;
+  }
+
+  const clamped = Math.max(0, Math.min(100, value));
+  afterWrapper.style.clipPath = `inset(0 ${100 - clamped}% 0 0)`;
+  sliderButton.style.left = clamped + '%';
+  sliderButton.style.top = '0';
 }
 
 // ============ REAL-TIME PREVIEW ============
@@ -1270,3 +1540,229 @@ function disableRealTimePreview() {
 // ============ START ============
 
 init();
+
+// ============ TESLA-INSPIRED UI ENHANCEMENTS ============
+
+// Smooth scroll reveal animations
+function observeElements() {
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        entry.target.style.opacity = '1';
+        entry.target.style.transform = 'translateY(0)';
+      }
+    });
+  }, {
+    threshold: 0.1
+  });
+
+  document.querySelectorAll('.card, .job-card').forEach(el => {
+    el.style.opacity = '0';
+    el.style.transform = 'translateY(20px)';
+    el.style.transition = 'all 0.6s cubic-bezier(0.4, 0, 0.2, 1)';
+    observer.observe(el);
+  });
+}
+
+// Enhanced button feedback
+function enhanceButtons() {
+  document.querySelectorAll('.btn').forEach(btn => {
+    btn.addEventListener('mousedown', function(e) {
+      const ripple = document.createElement('span');
+      ripple.style.position = 'absolute';
+      ripple.style.borderRadius = '50%';
+      ripple.style.background = 'rgba(255, 255, 255, 0.6)';
+      ripple.style.width = '20px';
+      ripple.style.height = '20px';
+      ripple.style.pointerEvents = 'none';
+      
+      const rect = this.getBoundingClientRect();
+      ripple.style.left = (e.clientX - rect.left - 10) + 'px';
+      ripple.style.top = (e.clientY - rect.top - 10) + 'px';
+      
+      ripple.style.animation = 'ripple 0.6s ease-out';
+      this.appendChild(ripple);
+      
+      setTimeout(() => ripple.remove(), 600);
+    });
+  });
+}
+
+// Particle effect for background
+function createParticles() {
+  const particleCount = 30;
+  const container = document.body;
+  
+  for (let i = 0; i < particleCount; i++) {
+    const particle = document.createElement('div');
+    particle.style.position = 'fixed';
+    particle.style.width = Math.random() * 3 + 1 + 'px';
+    particle.style.height = particle.style.width;
+    particle.style.background = 'rgba(234, 179, 8, 0.3)';
+    particle.style.borderRadius = '50%';
+    particle.style.left = Math.random() * 100 + '%';
+    particle.style.top = Math.random() * 100 + '%';
+    particle.style.pointerEvents = 'none';
+    particle.style.zIndex = '0';
+    particle.style.filter = 'blur(1px)';
+    particle.style.animation = `float ${10 + Math.random() * 20}s ease-in-out infinite`;
+    particle.style.animationDelay = Math.random() * 5 + 's';
+    
+    container.appendChild(particle);
+  }
+}
+
+// Smooth mouse tracking for interactive elements
+function addMouseTracking() {
+  document.querySelectorAll('.card').forEach(card => {
+    card.addEventListener('mousemove', function(e) {
+      const rect = this.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+      
+      const centerX = rect.width / 2;
+      const centerY = rect.height / 2;
+      
+      const rotateX = (y - centerY) / 20;
+      const rotateY = (centerX - x) / 20;
+      
+      this.style.transform = `perspective(1000px) rotateX(${rotateX}deg) rotateY(${rotateY}deg) translateY(-4px)`;
+    });
+    
+    card.addEventListener('mouseleave', function() {
+      this.style.transform = '';
+    });
+  });
+}
+
+// Enhanced upload zone feedback
+function enhanceUploadZones() {
+  [uploadZone, maskZone].forEach(zone => {
+    if (!zone) return;
+    
+    zone.addEventListener('dragenter', function(e) {
+      this.style.transform = 'scale(1.02)';
+    });
+    
+    zone.addEventListener('dragleave', function(e) {
+      if (e.target === this) {
+        this.style.transform = '';
+      }
+    });
+    
+    zone.addEventListener('drop', function(e) {
+      this.style.transform = '';
+      // Add success animation
+      this.style.animation = 'none';
+      setTimeout(() => {
+        this.style.animation = 'successPulse 0.6s ease-out';
+      }, 10);
+    });
+  });
+}
+
+// Add CSS for ripple effect
+const style = document.createElement('style');
+style.textContent = `
+  @keyframes ripple {
+    from {
+      transform: scale(0);
+      opacity: 1;
+    }
+    to {
+      transform: scale(4);
+      opacity: 0;
+    }
+  }
+  
+  @keyframes successPulse {
+    0%, 100% {
+      transform: scale(1);
+    }
+    50% {
+      transform: scale(1.05);
+    }
+  }
+  
+  @keyframes float {
+    0%, 100% {
+      transform: translateY(0) translateX(0);
+    }
+    25% {
+      transform: translateY(-20px) translateX(10px);
+    }
+    50% {
+      transform: translateY(-10px) translateX(-10px);
+    }
+    75% {
+      transform: translateY(-30px) translateX(5px);
+    }
+  }
+`;
+document.head.appendChild(style);
+
+// Initialize enhancements
+setTimeout(() => {
+  observeElements();
+  enhanceButtons();
+  createParticles();
+  addMouseTracking();
+  enhanceUploadZones();
+}, 100);
+
+// Add loading progress indicator
+function showLoadingProgress(message = 'Processing...') {
+  const existing = document.getElementById('loadingOverlay');
+  if (existing) existing.remove();
+  
+  const overlay = document.createElement('div');
+  overlay.id = 'loadingOverlay';
+  overlay.style.cssText = `
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.8);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 9999;
+    animation: fadeIn 0.3s ease-out;
+  `;
+  
+  overlay.innerHTML = `
+    <div style="text-align: center; color: white;">
+      <div style="width: 60px; height: 60px; margin: 0 auto 20px; border: 3px solid rgba(255,255,255,0.2); border-top-color: #eab308; border-radius: 50%; animation: spin 1s linear infinite;"></div>
+      <div style="font-size: 1.2rem; font-weight: 600; letter-spacing: 0.02em;">${message}</div>
+    </div>
+  `;
+  
+  document.body.appendChild(overlay);
+  return overlay;
+}
+
+function hideLoadingProgress() {
+  const overlay = document.getElementById('loadingOverlay');
+  if (overlay) {
+    overlay.style.animation = 'fadeOut 0.3s ease-out';
+    setTimeout(() => overlay.remove(), 300);
+  }
+}
+
+// Add fade animations to style
+const fadeStyle = document.createElement('style');
+fadeStyle.textContent = `
+  @keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+  
+  @keyframes fadeOut {
+    from { opacity: 1; }
+    to { opacity: 0; }
+  }
+`;
+document.head.appendChild(fadeStyle);

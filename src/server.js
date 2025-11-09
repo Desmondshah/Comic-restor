@@ -16,6 +16,8 @@ import sharp from "sharp";
 import { restorePage } from "./restore.js";
 import { analyzeQuality, checkPrintReadiness } from "./qa-checks.js";
 import { loadConfig } from "./config.js";
+import { batchProcess } from "./batch-processor.js";
+import { createMultiPagePDF } from "./pdf-export.js";
 
 // ES Module __dirname equivalent
 const __filename = fileURLToPath(import.meta.url);
@@ -197,6 +199,191 @@ async function processJob(jobId) {
   }
 }
 
+/**
+ * Process batch restoration job
+ */
+async function processBatchJob(jobId) {
+  const job = jobs.get(jobId);
+  if (!job) return;
+
+  try {
+    updateJobStatus(jobId, { status: "processing", progress: 5 });
+
+    // Load configuration
+    const config = loadConfig(job.options);
+
+    const restoredBuffers = [];
+    const failedFiles = [];
+    const totalFiles = job.inputPaths.length;
+
+    // Process each file
+    for (let i = 0; i < job.inputPaths.length; i++) {
+      const inputPath = job.inputPaths[i];
+      const filename = path.basename(inputPath);
+      
+      try {
+        updateJobStatus(jobId, {
+          status: "processing",
+          stage: `Processing ${i + 1}/${totalFiles}: ${filename}`,
+          progress: Math.round(10 + (i / totalFiles) * 70),
+          processedCount: i
+        });
+
+        console.log(`[Batch ${jobId}] Processing ${i + 1}/${totalFiles}: ${filename}`);
+
+        // Validate image format first
+        try {
+          const metadata = await sharp(inputPath).metadata();
+          console.log(`  Image format: ${metadata.format}, size: ${metadata.width}x${metadata.height}`);
+          
+          // Convert to a standard format if needed
+          let imageBuffer;
+          if (metadata.format === 'jpeg' || metadata.format === 'jpg' || metadata.format === 'png') {
+            imageBuffer = await sharp(inputPath).toBuffer();
+          } else {
+            // Convert unsupported formats to PNG first
+            console.log(`  Converting ${metadata.format} to PNG...`);
+            imageBuffer = await sharp(inputPath).png().toBuffer();
+          }
+          
+          // Save validated image temporarily
+          const tempPath = path.join(TEMP_DIR, `validated_${filename}.png`);
+          await sharp(imageBuffer).png().toFile(tempPath);
+          
+          // Restore the page using validated image
+          const restoredBuffer = await restorePage(tempPath, {
+            maskPath: job.maskPath,
+            scale: job.options.scale || config.upscale.scale,
+            faceEnhance: job.options.faceEnhance || config.upscale.faceEnhance,
+            useFaceRestore: job.options.useFaceRestore || config.faceRestore.enabled,
+            extractOCR: job.options.extractOCR || config.ocr.enabled,
+            // Lighting options
+            applyLighting: job.options.lightingPreset !== 'none',
+            lightingPreset: job.options.lightingPreset || 'modern-reprint'
+          });
+
+          console.log(`  Restored buffer size: ${restoredBuffer.length} bytes`);
+          
+          // Verify the restored buffer is valid
+          const restoredMetadata = await sharp(restoredBuffer).metadata();
+          console.log(`  Restored format: ${restoredMetadata.format}, ${restoredMetadata.width}x${restoredMetadata.height}`);
+
+          restoredBuffers.push(restoredBuffer);
+
+          // Save individual restored image
+          const outputFilename = path.basename(inputPath, path.extname(inputPath)) + "_restored.png";
+          const outputPath = path.join(OUTPUT_DIR, outputFilename);
+
+          const dpi = job.options.dpi || config.pdf.dpi;
+          await sharp(restoredBuffer)
+            .withMetadata({ density: dpi })
+            .png({ compressionLevel: 9, quality: 100 })
+            .toFile(outputPath);
+
+          console.log(`✓ Saved: ${outputPath} @ ${dpi} DPI`);
+          
+          // Clean up temp file
+          if (fs.existsSync(tempPath)) {
+            fs.unlinkSync(tempPath);
+          }
+          
+        } catch (validationError) {
+          throw new Error(`Image validation failed: ${validationError.message}`);
+        }
+
+      } catch (error) {
+        console.error(`✗ Error processing ${filename}:`, error.message);
+        failedFiles.push({ filename, error: error.message });
+        // Continue with other files even if one fails
+      }
+    }
+
+    // Create PDF if requested
+    let pdfPath = null;
+    let pdfFilename = null;
+
+    if (job.options.exportPDF && restoredBuffers.length > 0) {
+      updateJobStatus(jobId, {
+        status: "processing",
+        stage: "Creating PDF",
+        progress: 85,
+        processedCount: totalFiles
+      });
+
+      console.log(`\n[Batch ${jobId}] Creating multi-page PDF with ${restoredBuffers.length} pages...`);
+      console.log(`Buffers ready for PDF:`);
+      for (let i = 0; i < restoredBuffers.length; i++) {
+        console.log(`  Page ${i + 1}: ${restoredBuffers[i].length} bytes, isBuffer: ${Buffer.isBuffer(restoredBuffers[i])}`);
+      }
+
+      pdfFilename = `batch_${jobId}_restored.pdf`;
+      pdfPath = path.join(OUTPUT_DIR, pdfFilename);
+
+      try {
+        await createMultiPagePDF(restoredBuffers, pdfPath, {
+          widthIn: 6.625,
+          heightIn: 10.25,
+          dpi: job.options.dpi || config.pdf.dpi,
+          bleedIn: job.options.bleedIn || config.pdf.bleed,
+          matteCompensation: job.options.matteCompensation || 5,
+          title: "Restored Comic Book - Batch " + jobId,
+          author: ""
+        });
+
+        console.log(`✓ PDF created: ${pdfPath}`);
+      } catch (pdfError) {
+        console.error(`❌ PDF creation failed:`, pdfError.message);
+        console.error(`Stack trace:`, pdfError.stack);
+        throw new Error(`PDF export failed: ${pdfError.message}`);
+      }
+    }
+
+    // Success!
+    updateJobStatus(jobId, {
+      status: "completed",
+      progress: 100,
+      processedCount: totalFiles,
+      successCount: restoredBuffers.length,
+      failedCount: totalFiles - restoredBuffers.length,
+      failedFiles: failedFiles.length > 0 ? failedFiles : undefined,
+      outputPath: pdfPath,
+      outputFilename: pdfFilename,
+      completedAt: new Date().toISOString()
+    });
+
+    console.log(`✓ Batch job ${jobId} completed: ${restoredBuffers.length}/${totalFiles} successful`);
+    if (failedFiles.length > 0) {
+      console.log(`  Failed files:`);
+      failedFiles.forEach(f => console.log(`    - ${f.filename}: ${f.error}`));
+    }
+
+  } catch (error) {
+    console.error(`Batch job ${jobId} failed:`, error);
+    
+    // Enhanced error messages
+    let errorMessage = error.message;
+    let errorDetail = '';
+    
+    if (error.message.includes('402') || error.message.includes('Insufficient credit')) {
+      errorMessage = 'Insufficient Replicate credits';
+      errorDetail = 'Credits purchased? Please wait 2-5 minutes for activation, then try again.';
+    } else if (error.message.includes('401') || error.message.includes('Unauthenticated')) {
+      errorMessage = 'API authentication failed';
+      errorDetail = 'Check your REPLICATE_API_TOKEN in .env file';
+    } else if (error.message.includes('429') || error.message.includes('rate limit')) {
+      errorMessage = 'API rate limit reached';
+      errorDetail = 'Please wait a few minutes before trying again';
+    }
+    
+    updateJobStatus(jobId, {
+      status: "failed",
+      error: errorMessage,
+      errorDetail: errorDetail,
+      failedAt: new Date().toISOString()
+    });
+  }
+}
+
 // ============ API ROUTES ============
 
 /**
@@ -295,6 +482,58 @@ app.post("/api/restore", async (req, res) => {
 
   // Start processing (async)
   processJob(jobId);
+
+  res.json({
+    success: true,
+    jobId,
+    job
+  });
+});
+
+/**
+ * POST /api/restore-batch - Start batch restoration job
+ */
+app.post("/api/restore-batch", async (req, res) => {
+  if (!process.env.REPLICATE_API_TOKEN) {
+    return res.status(500).json({ error: "REPLICATE_API_TOKEN not configured" });
+  }
+
+  const { filenames, maskFilename, options = {} } = req.body;
+
+  if (!filenames || !filenames.length) {
+    return res.status(400).json({ error: "No filenames provided" });
+  }
+
+  // Verify all files exist
+  const inputPaths = [];
+  for (const filename of filenames) {
+    const inputPath = path.join(UPLOAD_DIR, filename);
+    if (!fs.existsSync(inputPath)) {
+      return res.status(404).json({ error: `File not found: ${filename}` });
+    }
+    inputPaths.push(inputPath);
+  }
+
+  // Create batch job
+  const jobId = jobIdCounter++;
+  const job = {
+    id: jobId,
+    filenames,
+    inputPaths,
+    maskPath: maskFilename ? path.join(UPLOAD_DIR, maskFilename) : null,
+    options,
+    isBatch: true,
+    fileCount: filenames.length,
+    status: "queued",
+    progress: 0,
+    processedCount: 0,
+    createdAt: new Date().toISOString()
+  };
+
+  jobs.set(jobId, job);
+
+  // Start batch processing (async)
+  processBatchJob(jobId);
 
   res.json({
     success: true,

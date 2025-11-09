@@ -138,6 +138,7 @@ export async function applyPremiumLighting(imageBuffer, options = {}) {
           blend: 'over',
           opacity: effectOpacity
         }])
+        .png()
         .toBuffer();
       
       console.log("✓ Premium lighting effects applied");
@@ -145,7 +146,7 @@ export async function applyPremiumLighting(imageBuffer, options = {}) {
     }
 
     console.log("✓ Premium lighting effects applied");
-    return await finalImage.toBuffer();
+    return await finalImage.png().toBuffer();
 
   } catch (error) {
     console.error("❌ Error applying lighting effects:", error.message);
