@@ -446,12 +446,18 @@ async function handleImageUpload(appendMode = false) {
         continue;
       }
       
-      const formData = new FormData();
-      formData.append('image', file);
+      // Convert file to base64
+      const base64 = await fileToBase64(file);
       
       const response = await fetch('/api/upload', {
         method: 'POST',
-        body: formData
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          image: base64,
+          filename: file.name
+        })
       });
       
       const data = await response.json();
@@ -462,13 +468,14 @@ async function handleImageUpload(appendMode = false) {
         uploadedFiles.push({
           file: file,
           filename: data.filename,
-          originalName: data.originalName,
-          size: data.size
+          storageId: data.storageId,
+          originalName: data.originalName || file.name,
+          size: file.size
         });
         uploadedFilenames.push(data.filename);
         
         // Add to preview grid
-        addBatchPreviewItem(data.filename, data.originalName, uploadedFiles.length);
+        addBatchPreviewItem(data.filename, data.originalName || file.name, uploadedFiles.length);
       }
     }
     
@@ -507,6 +514,16 @@ async function handleImageUpload(appendMode = false) {
     // Reset input on error too
     imageInput.value = '';
   }
+}
+
+// Helper function to convert file to base64
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = error => reject(error);
+  });
 }
 
 function addBatchPreviewItem(filename, originalName, pageNumber) {
