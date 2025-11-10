@@ -19,34 +19,40 @@
       margin: 0;
       padding: 0;
       box-sizing: border-box;
-      /* iOS optimizations */
       -webkit-tap-highlight-color: rgba(234, 179, 8, 0.2);
       -webkit-touch-callout: none;
-      /* Prevent double-tap zoom on all elements */
       touch-action: manipulation;
-      /* Fix iOS rendering glitches */
-      -webkit-font-smoothing: antialiased;
-      -moz-osx-font-smoothing: grayscale;
     }
 
-    /* Improved iOS scrolling */
     html {
       -webkit-overflow-scrolling: touch;
-      overflow-scrolling: touch;
-      /* Prevent zoom on double-tap */
       touch-action: manipulation;
-      /* Fix iOS 3D transform issues */
-      -webkit-transform-style: preserve-3d;
-      transform-style: preserve-3d;
     }
 
     body {
-      /* Prevent zoom on double-tap */
       touch-action: manipulation;
-      /* Hardware acceleration */
-      -webkit-transform: translateZ(0);
-      transform: translateZ(0);
-      will-change: transform;
+    }
+
+    /* MOBILE: Disable ALL animations, transitions, and transforms */
+    @media (max-width: 768px) {
+      *,
+      *::before,
+      *::after {
+        animation: none !important;
+        transition: none !important;
+        transform: none !important;
+        -webkit-transform: none !important;
+        box-shadow: none !important;
+        -webkit-box-shadow: none !important;
+        backdrop-filter: none !important;
+        -webkit-backdrop-filter: none !important;
+      }
+      
+      /* Simple feedback for buttons on mobile - just opacity */
+      .btn:active,
+      button:active {
+        opacity: 0.7 !important;
+      }
     }
 
     :root {
@@ -76,42 +82,6 @@
       line-height: 1.6;
       overflow-x: hidden;
       position: relative;
-      /* Optimized for mobile - simplified background */
-      /* Prevent iOS stretching/3D effects */
-      -webkit-transform: translate3d(0, 0, 0);
-      transform: translate3d(0, 0, 0);
-      -webkit-backface-visibility: hidden;
-      backface-visibility: hidden;
-      -webkit-perspective: 1000;
-      perspective: 1000;
-    }
-
-    /* Fix iOS transform glitches on all interactive elements */
-    @media (max-width: 768px) {
-      button, 
-      input, 
-      select, 
-      textarea,
-      .btn,
-      .card,
-      .upload-zone {
-        -webkit-transform: translate3d(0, 0, 0);
-        transform: translate3d(0, 0, 0);
-        -webkit-backface-visibility: hidden;
-        backface-visibility: hidden;
-      }
-
-      /* Disable all transforms on active/focus for mobile */
-      button:active,
-      input:active,
-      input:focus,
-      select:active,
-      select:focus,
-      .btn:active,
-      .card:active {
-        transform: none !important;
-        -webkit-transform: none !important;
-      }
     }
 
     /* Desktop-only decorative backgrounds */
