@@ -22,12 +22,21 @@
       /* iOS optimizations */
       -webkit-tap-highlight-color: rgba(234, 179, 8, 0.2);
       -webkit-touch-callout: none;
+      /* Prevent double-tap zoom on all elements */
+      touch-action: manipulation;
     }
 
     /* Improved iOS scrolling */
     html {
       -webkit-overflow-scrolling: touch;
       overflow-scrolling: touch;
+      /* Prevent zoom on double-tap */
+      touch-action: manipulation;
+    }
+
+    body {
+      /* Prevent zoom on double-tap */
+      touch-action: manipulation;
     }
 
     :root {
