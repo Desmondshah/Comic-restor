@@ -359,6 +359,27 @@ function setupEventListeners() {
     });
   }
 
+  // AI Reflections & Shadows controls
+  const enableReflections = document.getElementById('enableReflections');
+  const reflectionsOptions = document.getElementById('reflectionsOptions');
+  const reflectionStrength = document.getElementById('reflectionStrength');
+  const reflectionStrengthValue = document.getElementById('reflectionStrengthValue');
+  
+  if (enableReflections) {
+    enableReflections.addEventListener('change', (e) => {
+      if (reflectionsOptions) {
+        reflectionsOptions.style.display = e.target.checked ? 'block' : 'none';
+      }
+    });
+  }
+  
+  if (reflectionStrength && reflectionStrengthValue) {
+    reflectionStrength.addEventListener('input', (e) => {
+      const value = (parseInt(e.target.value) / 100).toFixed(2);
+      reflectionStrengthValue.textContent = value;
+    });
+  }
+
   // Preset controls
   const presetSelector = document.getElementById('presetSelector');
   const savePresetBtn = document.getElementById('savePresetBtn');
@@ -1337,7 +1358,14 @@ async function startRestoration() {
     aiPreserveSignature: document.getElementById('aiPreserveSignature')?.checked || true,
     aiModernStyle: document.getElementById('aiModernStyle')?.checked || true,
     aiStrength: parseInt(document.getElementById('aiStrength')?.value || 80) / 100,
-    aiGuidanceScale: parseFloat(document.getElementById('aiGuidanceScale')?.value || 7.5)
+    aiGuidanceScale: parseFloat(document.getElementById('aiGuidanceScale')?.value || 7.5),
+    // AI Reflections & Shadows options
+    enableReflections: document.getElementById('enableReflections')?.checked || false,
+    addReflections: document.getElementById('addReflections')?.checked || true,
+    addShadows: document.getElementById('addShadows')?.checked || true,
+    addSpecular: document.getElementById('addSpecular')?.checked || true,
+    reflectionIntensity: document.getElementById('reflectionIntensity')?.value || 'medium',
+    reflectionStrength: parseInt(document.getElementById('reflectionStrength')?.value || 60) / 100
   };
   
   // Determine if batch or single restoration

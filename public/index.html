@@ -1826,6 +1826,58 @@
             </div>
           </div>
 
+          <!-- AI Reflections & Shadows -->
+          <div style="padding: 20px; background: var(--bg-card); border: 2px solid var(--border); border-radius: 12px; backdrop-filter: blur(10px); margin-bottom: 20px;">
+            <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 15px;">
+              <div style="font-size: 1.5rem;">💎</div>
+              <div>
+                <strong>AI Reflections & Shadows</strong> <span style="color: var(--accent); font-weight: normal;">(RTX-Style)</span><br>
+                <span style="color: var(--text-muted); font-size: 0.85rem;">
+                  Add depth-aware reflections, shadows, and highlights
+                </span>
+              </div>
+            </div>
+            <div style="margin-bottom: 15px;">
+              <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; user-select: none;">
+                <input type="checkbox" id="enableReflections" style="width: 18px; height: 18px; cursor: pointer;">
+                <span style="color: var(--text-secondary); font-weight: 500;">Enable AI Reflections & Shadows</span>
+              </label>
+            </div>
+            <div id="reflectionsOptions" style="display: none; margin-top: 15px; padding: 15px; background: var(--bg-secondary); border-radius: 8px; border: 1px solid var(--border);">
+              <div style="margin-bottom: 10px;">
+                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; user-select: none;">
+                  <input type="checkbox" id="addReflections" checked style="width: 16px; height: 16px; cursor: pointer;">
+                  <span style="color: var(--text-muted); font-size: 0.9rem;">Add reflections on shiny surfaces</span>
+                </label>
+              </div>
+              <div style="margin-bottom: 10px;">
+                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; user-select: none;">
+                  <input type="checkbox" id="addShadows" checked style="width: 16px; height: 16px; cursor: pointer;">
+                  <span style="color: var(--text-muted); font-size: 0.9rem;">Add contact shadows & depth</span>
+                </label>
+              </div>
+              <div style="margin-bottom: 15px;">
+                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; user-select: none;">
+                  <input type="checkbox" id="addSpecular" checked style="width: 16px; height: 16px; cursor: pointer;">
+                  <span style="color: var(--text-muted); font-size: 0.9rem;">Add specular highlights</span>
+                </label>
+              </div>
+              <div class="form-group" style="margin-bottom: 10px;">
+                <label style="font-size: 0.9rem; color: var(--text-muted);">Effect Intensity</label>
+                <select id="reflectionIntensity" style="width: 100%; padding: 8px; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 4px; cursor: pointer;">
+                  <option value="subtle">Subtle</option>
+                  <option value="medium" selected>Medium</option>
+                  <option value="dramatic">Dramatic</option>
+                </select>
+              </div>
+              <div class="form-group" style="margin-bottom: 0;">
+                <label style="font-size: 0.9rem; color: var(--text-muted);">Effect Strength</label>
+                <input type="range" id="reflectionStrength" min="0" max="100" value="60" style="width: 100%; cursor: pointer;">
+                <span id="reflectionStrengthValue" style="font-size: 0.85rem; color: var(--text-muted);">0.6</span>
+              </div>
+            </div>
+          </div>
+
           <!-- Mask Upload (Optional - Legacy) -->
           <div class="upload-zone" id="maskZone" style="padding: 20px; display: none;">
             <div style="font-size: 1.5rem;">🎭</div>

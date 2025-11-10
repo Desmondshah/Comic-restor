@@ -19,6 +19,7 @@ import { loadConfig } from "./config.js";
 import { batchProcess } from "./batch-processor.js";
 import { createMultiPagePDF } from "./pdf-export.js";
 import { AIDamageRestoration } from "./ai-damage-restoration.js";
+import { AIReflectionsEnhancer } from "./ai-reflections.js";
 
 // ES Module __dirname equivalent
 const __filename = fileURLToPath(import.meta.url);
@@ -129,7 +130,9 @@ async function processJob(jobId) {
       aiGuidanceScale: job.options.aiGuidanceScale,
       aiPreserveLogo: job.options.aiPreserveLogo,
       aiPreserveSignature: job.options.aiPreserveSignature,
-      aiModernStyle: job.options.aiModernStyle
+      aiModernStyle: job.options.aiModernStyle,
+      enableReflections: job.options.enableReflections,
+      reflectionIntensity: job.options.reflectionIntensity
     });
 
     let restoredBuffer;
@@ -155,10 +158,36 @@ async function processJob(jobId) {
       
       await restorer.restoreDamage(job.inputPath, aiOutputPath, aiOptions);
       
-      // Use AI-restored image as input for next step
+      // Step 1.5: AI Reflections & Shadows (if enabled)
+      let reflectionsOutputPath = aiOutputPath;
+      if (job.options.enableReflections) {
+        console.log('✨ AI Reflections & Shadows ENABLED - Adding depth-aware enhancements...');
+        updateJobStatus(jobId, { status: "processing", stage: "ai-reflections", progress: 35 });
+        
+        const reflectionsEnhancer = new AIReflectionsEnhancer();
+        const basename = path.basename(job.inputPath, path.extname(job.inputPath));
+        reflectionsOutputPath = path.join(TEMP_DIR, `${basename}_reflections.jpg`);
+        
+        const reflectionOptions = {
+          addReflections: job.options.addReflections !== false,
+          addShadows: job.options.addShadows !== false,
+          addSpecular: job.options.addSpecular !== false,
+          intensityLevel: job.options.reflectionIntensity || 'medium',
+          strength: job.options.reflectionStrength || 0.6,
+        };
+        
+        await reflectionsEnhancer.enhanceReflections(aiOutputPath, reflectionsOutputPath, reflectionOptions);
+        
+        // Clean up previous temp file
+        if (fs.existsSync(aiOutputPath)) {
+          fs.unlinkSync(aiOutputPath);
+        }
+      }
+      
+      // Use AI-enhanced image as input for next step
       updateJobStatus(jobId, { status: "processing", stage: "upscaling", progress: 50 });
       
-      restoredBuffer = await restorePage(aiOutputPath, {
+      restoredBuffer = await restorePage(reflectionsOutputPath, {
         maskPath: job.maskPath,
         scale: job.options.scale || config.upscale.scale,
         faceEnhance: job.options.faceEnhance || config.upscale.faceEnhance,
@@ -169,8 +198,8 @@ async function processJob(jobId) {
       });
       
       // Clean up temp file
-      if (fs.existsSync(aiOutputPath)) {
-        fs.unlinkSync(aiOutputPath);
+      if (fs.existsSync(reflectionsOutputPath)) {
+        fs.unlinkSync(reflectionsOutputPath);
       }
     } else {
       console.log('⚠️  AI Damage Restoration DISABLED - Skipping Nano Banana, going straight to upscaling');
