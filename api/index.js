@@ -27,27 +27,41 @@ if (convexUrl) {
 app.post('/api/upload', async (req, res) => {
   try {
     console.log('Upload request received');
+    console.log('Convex URL:', convexUrl);
+    console.log('Convex client initialized:', !!convex);
     
     if (!convex) {
+      console.error('Convex not configured. URL:', convexUrl);
       return res.status(500).json({ 
-        error: 'Convex not configured. Please set CONVEX_URL environment variable.' 
+        error: 'Convex not configured. Please set CONVEX_URL environment variable.',
+        debug: {
+          convexUrl: convexUrl,
+          env: Object.keys(process.env).filter(k => k.includes('CONVEX'))
+        }
       });
     }
 
     const { image, filename } = req.body;
     
     if (!image) {
+      console.error('No image data in request body');
       return res.status(400).json({ error: 'No image data provided' });
     }
 
+    console.log('Processing image upload for:', filename);
+
     // Image should be base64 encoded
     const base64Data = image.replace(/^data:image\/\w+;base64,/, '');
+    
+    console.log('Calling Convex mutation...');
     
     // Store in Convex
     const result = await convex.mutation(api.restoration.uploadImage, {
       imageData: base64Data,
       filename: filename || 'upload.jpg'
     });
+
+    console.log('Upload successful:', result);
 
     res.json({
       success: true,
@@ -58,7 +72,8 @@ app.post('/api/upload', async (req, res) => {
   } catch (error) {
     console.error('Upload error:', error);
     res.status(500).json({ 
-      error: error.message || 'Upload failed' 
+      error: error.message || 'Upload failed',
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
     });
   }
 });
@@ -132,7 +147,14 @@ app.get('/api/health', (req, res) => {
   res.json({ 
     status: 'ok', 
     timestamp: new Date().toISOString(),
-    convexConfigured: !!convex
+    convexConfigured: !!convex,
+    convexUrl: convexUrl,
+    env: {
+      nodeEnv: process.env.NODE_ENV,
+      hasConvexUrl: !!process.env.CONVEX_URL,
+      hasNextPublicConvexUrl: !!process.env.NEXT_PUBLIC_CONVEX_URL,
+      hasReplicateToken: !!process.env.REPLICATE_API_TOKEN
+    }
   });
 });
 
