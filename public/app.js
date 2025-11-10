@@ -418,6 +418,56 @@ function setupEventListeners() {
 
 // ============ FILE UPLOAD ============
 
+/**
+ * Optimized file upload for Vercel/production
+ * Uses compressed base64 to avoid multipart form-data issues
+ */
+async function uploadFileOptimized(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    
+    reader.onload = async () => {
+      try {
+        const base64 = reader.result;
+        
+        console.log(`📦 Original size: ${(file.size / 1024 / 1024).toFixed(2)}MB`);
+        console.log(`📦 Base64 size: ${(base64.length / 1024 / 1024).toFixed(2)}MB`);
+        
+        const startTime = Date.now();
+        
+        const response = await fetch('/api/upload', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            file: base64,
+            filename: file.name
+          })
+        });
+        
+        const uploadTime = Date.now() - startTime;
+        console.log(`⏱️  Upload completed in ${(uploadTime / 1000).toFixed(1)}s`);
+        
+        if (!response.ok) {
+          const error = await response.json();
+          throw new Error(error.error || `Upload failed: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        resolve(data);
+        
+      } catch (error) {
+        reject(error);
+      }
+    };
+    
+    reader.onerror = () => {
+      reject(new Error('Failed to read file'));
+    };
+    
+    reader.readAsDataURL(file);
+  });
+}
+
 async function handleImageUpload(appendMode = false) {
   const files = Array.from(imageInput.files);
   if (!files.length) return;
@@ -435,6 +485,9 @@ async function handleImageUpload(appendMode = false) {
   try {
     uploadText.innerHTML = '<div class="spinner"></div> Uploading...';
     
+    // Detect if we're in production (Vercel) or local
+    const isProduction = window.location.hostname !== 'localhost' && !window.location.hostname.includes('127.0.0.1');
+    
     // Upload each file
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
@@ -449,16 +502,26 @@ async function handleImageUpload(appendMode = false) {
         continue;
       }
       
-      // Use FormData for faster upload (no base64 conversion)
-      const formData = new FormData();
-      formData.append('image', file);
+      let data;
       
-      const response = await fetch('/api/upload', {
-        method: 'POST',
-        body: formData // Don't set Content-Type header - browser will set it with boundary
-      });
+      if (isProduction) {
+        // Use optimized base64 upload for Vercel
+        console.log(`📤 Using optimized upload for production: ${file.name}`);
+        data = await uploadFileOptimized(file);
+      } else {
+        // Use FormData for local development (faster)
+        console.log(`📤 Using FormData upload for local: ${file.name}`);
+        const formData = new FormData();
+        formData.append('image', file);
+        
+        const response = await fetch('/api/upload', {
+          method: 'POST',
+          body: formData
+        });
+        
+        data = await response.json();
+      }
       
-      const data = await response.json();
       console.log(`Upload response for ${file.name}:`, data);
       
       if (data.success) {
@@ -467,6 +530,7 @@ async function handleImageUpload(appendMode = false) {
           file: file,
           filename: data.filename,
           storageId: data.storageId,
+          url: data.url, // Blob URL for production
           originalName: data.originalName || file.name,
           size: file.size
         });
