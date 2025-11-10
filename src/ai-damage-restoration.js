@@ -227,6 +227,112 @@ export class AIDamageRestoration {
   }
 
   /**
+   * Process image buffer with AI damage restoration (no file I/O)
+   * Perfect for serverless environments like Vercel
+   */
+  async restoreDamageBuffer(inputBuffer, options = {}) {
+    try {
+      console.log(`🤖 Processing image buffer with AI damage restoration...`);
+      console.log(`📋 Options:`, JSON.stringify(options, null, 2));
+
+      // Get original image dimensions
+      const originalMetadata = await sharp(inputBuffer).metadata();
+      const originalWidth = originalMetadata.width;
+      const originalHeight = originalMetadata.height;
+      console.log(`📐 Original dimensions: ${originalWidth}x${originalHeight}`);
+
+      // Add padding to prevent cropping by the AI model
+      const paddingPercent = 0.05; // 5% padding
+      const paddingX = Math.round(originalWidth * paddingPercent);
+      const paddingY = Math.round(originalHeight * paddingPercent);
+      
+      console.log(`🔲 Adding ${paddingX}px horizontal and ${paddingY}px vertical padding...`);
+      
+      // Create padded image
+      const paddedBuffer = await sharp(inputBuffer)
+        .extend({
+          top: paddingY,
+          bottom: paddingY,
+          left: paddingX,
+          right: paddingX,
+          background: { r: 255, g: 255, b: 255, alpha: 1 }
+        })
+        .toBuffer();
+      
+      const paddedWidth = originalWidth + (paddingX * 2);
+      const paddedHeight = originalHeight + (paddingY * 2);
+      console.log(`📐 Padded dimensions: ${paddedWidth}x${paddedHeight}`);
+
+      // Convert to data URL
+      const base64Image = paddedBuffer.toString("base64");
+      const imageInput = `data:image/jpeg;base64,${base64Image}`;
+
+      // Generate prompt
+      const prompt = this.generatePrompt(options);
+      console.log(`📝 Using prompt:\n${prompt}`);
+
+      // Prepare input for Replicate
+      const replicateInput = {
+        prompt: prompt,
+        image_input: [imageInput],
+      };
+
+      if (options.strength !== undefined) {
+        replicateInput.strength = options.strength;
+        console.log(`🎚️  Strength: ${options.strength}`);
+      }
+      if (options.guidance_scale !== undefined) {
+        replicateInput.guidance_scale = options.guidance_scale;
+        console.log(`🎯 Guidance Scale: ${options.guidance_scale}`);
+      }
+
+      // Run AI model
+      console.log("🚀 Running Nano Banana model on Replicate...");
+      console.log("⏱️  This typically takes 30-60 seconds...");
+
+      const output = await this.replicate.run(this.model, {
+        input: replicateInput,
+      });
+
+      if (!output || !output[0]) {
+        throw new Error("No output received from Replicate");
+      }
+
+      const imageUrl = output[0];
+      console.log(`📥 Downloading restored image from: ${imageUrl}`);
+
+      // Download result
+      const response = await fetch(imageUrl);
+      if (!response.ok) {
+        throw new Error(`Failed to download result: ${response.status}`);
+      }
+
+      let buffer = Buffer.from(await response.arrayBuffer());
+      console.log(`✅ Downloaded: ${(buffer.length / 1024 / 1024).toFixed(2)}MB`);
+
+      // Remove padding to return to original dimensions
+      console.log(`✂️  Removing padding to restore original dimensions...`);
+      buffer = await sharp(buffer)
+        .extract({
+          left: paddingX,
+          top: paddingY,
+          width: originalWidth,
+          height: originalHeight
+        })
+        .jpeg({ quality: 95, chromaSubsampling: '4:4:4' })
+        .toBuffer();
+
+      console.log(`✅ AI restoration complete (buffer)`);
+
+      return buffer;
+
+    } catch (error) {
+      console.error(`❌ Error processing buffer:`, error.message);
+      throw error;
+    }
+  }
+
+  /**
    * Batch process multiple images
    */
   async restoreBatch(inputPaths, outputDir, options = {}) {
