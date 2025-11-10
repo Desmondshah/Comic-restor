@@ -16,7 +16,9 @@
     "server": "node src/server.js",
     "web": "node src/server.js",
     "build": "echo 'No build step required'",
-    "vercel-build": "echo 'Build complete'"
+    "vercel-build": "echo 'Build complete'",
+    "dev": "convex dev",
+    "deploy": "convex deploy"
   },
   "keywords": [
     "comic",
@@ -30,6 +32,7 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
+    "convex": "^1.16.0",
     "replicate": "^0.32.1",
     "sharp": "^0.33.5",
     "pdf-lib": "^1.17.1",

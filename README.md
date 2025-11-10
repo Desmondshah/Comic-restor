@@ -69,17 +69,33 @@ Then open http://localhost:3000 in your browser!
 
 See **[WEB_UI_GUIDE.md](WEB_UI_GUIDE.md)** for details.
 
-### Option 2: Deploy to Vercel ☁️
+### Option 2: Deploy to Convex ☁️ (Recommended)
 
-Deploy this project to Vercel for cloud hosting:
+Deploy to Convex for unlimited background processing and built-in file storage:
 
-1. Click the deploy button or follow **[VERCEL_DEPLOYMENT.md](VERCEL_DEPLOYMENT.md)**
+```bash
+npm install
+npx convex dev
+```
+
+- ♾️ **No timeout limits** - AI processing takes as long as needed
+- 📁 **Built-in file storage** - No external S3 needed
+- 🆓 **Generous free tier** - 1M function calls/month
+- ⚡ **Real-time updates** - Better than WebSockets
+
+See **[CONVEX_DEPLOYMENT.md](CONVEX_DEPLOYMENT.md)** for complete setup guide.
+
+### Option 3: Deploy to Vercel ☁️
+
+Deploy to Vercel for quick hosting (limited by timeouts):
+
+1. Click deploy or follow **[VERCEL_DEPLOYMENT.md](VERCEL_DEPLOYMENT.md)**
 2. Add your `REPLICATE_API_TOKEN` in environment variables
 3. Your comic restoration tool is now online!
 
-**Note**: Vercel has serverless limitations. For full features (WebSockets, file persistence), see the deployment guide for recommendations.
+**Note**: Vercel Hobby plan has 10s timeout. Convex recommended for full features.
 
-### Option 3: Command Line
+### Option 4: Command Line
 
 ```bash
 npm install
@@ -231,7 +247,8 @@ Available examples:
 
 ## Documentation
 
-- **[VERCEL_DEPLOYMENT.md](VERCEL_DEPLOYMENT.md)** - ☁️ Deploy to Vercel cloud hosting
+- **[CONVEX_DEPLOYMENT.md](CONVEX_DEPLOYMENT.md)** - ☁️ **Recommended** Deploy to Convex (no timeout limits!)
+- **[VERCEL_DEPLOYMENT.md](VERCEL_DEPLOYMENT.md)** - ☁️ Deploy to Vercel (limited timeouts)
 - **[AI_DAMAGE_RESTORATION_GUIDE.md](AI_DAMAGE_RESTORATION_GUIDE.md)** - ⭐ NEW: Complete AI damage restoration guide
 - **[AI_DAMAGE_QUICK_REF.md](AI_DAMAGE_QUICK_REF.md)** - ⭐ NEW: Quick reference for AI restoration
 - **[PRESET_COMPARISON_GUIDE.md](PRESET_COMPARISON_GUIDE.md)** - Complete guide to preset management and comparison features

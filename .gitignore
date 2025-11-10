@@ -11,3 +11,9 @@ uploads/
 # Vercel
 .vercel
 .vercel_build_output
+
+# Convex
+.convex/
+convex/_generated/
+
+.env.local
