@@ -1,14 +1,23 @@
 /**
  * Optimized upload endpoint for Vercel
- * Uses chunked upload for large files to avoid body size limits
+ * This file is ONLY used when deployed to Vercel
+ * For local development, the Express server in src/server.js handles uploads
  */
 
-import { put } from '@vercel/blob';
+// Only import blob if available (Vercel environment)
+let put;
+try {
+  const blobModule = await import('@vercel/blob');
+  put = blobModule.put;
+} catch (e) {
+  // Blob not available - that's OK for local development
+  put = null;
+}
 
 export const config = {
   api: {
     bodyParser: {
-      sizeLimit: '50mb', // Pro plan supports up to 4.5MB on Hobby
+      sizeLimit: '50mb',
     },
   },
   maxDuration: 30,
@@ -32,14 +41,19 @@ export default async function handler(req, res) {
     const startTime = Date.now();
     
     // Check if we're using Vercel Blob Storage
-    const useBlobStorage = !!process.env.BLOB_READ_WRITE_TOKEN;
+    const useBlobStorage = !!process.env.BLOB_READ_WRITE_TOKEN && !!put;
     
     if (useBlobStorage) {
       // Vercel Blob Storage upload
       return await handleBlobUpload(req, res, startTime);
     } else {
-      // Local/traditional server upload
-      return await handleLocalUpload(req, res, startTime);
+      // Not configured for blob storage - return error with helpful message
+      return res.status(503).json({
+        success: false,
+        error: 'Blob storage not configured',
+        message: 'This endpoint requires Vercel Blob Storage. For local development, use the Express server instead.',
+        hint: 'Run "npm run server" for local development'
+      });
     }
 
   } catch (error) {

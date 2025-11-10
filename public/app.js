@@ -486,7 +486,15 @@ async function handleImageUpload(appendMode = false) {
     uploadText.innerHTML = '<div class="spinner"></div> Uploading...';
     
     // Detect if we're in production (Vercel) or local
-    const isProduction = window.location.hostname !== 'localhost' && !window.location.hostname.includes('127.0.0.1');
+    // Check for vercel.app domain or custom domains (not localhost/127.0.0.1)
+    const isLocalDev = window.location.hostname === 'localhost' 
+      || window.location.hostname.includes('127.0.0.1')
+      || window.location.hostname === '';
+    
+    const useOptimizedUpload = !isLocalDev && window.location.hostname.includes('vercel.app');
+    
+    console.log(`🌍 Environment: ${isLocalDev ? 'Local' : 'Production'}`);
+    console.log(`📤 Upload method: ${useOptimizedUpload ? 'Optimized (Base64)' : 'Standard (FormData)'}`);
     
     // Upload each file
     for (let i = 0; i < files.length; i++) {
@@ -504,13 +512,13 @@ async function handleImageUpload(appendMode = false) {
       
       let data;
       
-      if (isProduction) {
-        // Use optimized base64 upload for Vercel
-        console.log(`📤 Using optimized upload for production: ${file.name}`);
+      if (useOptimizedUpload) {
+        // Use optimized base64 upload for Vercel production
+        console.log(`📤 Using optimized upload for Vercel: ${file.name}`);
         data = await uploadFileOptimized(file);
       } else {
-        // Use FormData for local development (faster)
-        console.log(`📤 Using FormData upload for local: ${file.name}`);
+        // Use FormData for local development or non-Vercel environments
+        console.log(`📤 Using FormData upload: ${file.name}`);
         const formData = new FormData();
         formData.append('image', file);
         
@@ -518,6 +526,10 @@ async function handleImageUpload(appendMode = false) {
           method: 'POST',
           body: formData
         });
+        
+        if (!response.ok) {
+          throw new Error(`Upload failed: ${response.status} ${response.statusText}`);
+        }
         
         data = await response.json();
       }
