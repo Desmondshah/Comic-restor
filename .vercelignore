@@ -1,0 +1,11 @@
+node_modules
+.env
+.env.local
+uploads/*
+output/*
+temp/*
+samples/*
+*.md
+!README.md
+.git
+.gitignore

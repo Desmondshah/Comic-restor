@@ -14,7 +14,9 @@
     "setup": "node src/setup-check.js",
     "init-config": "node src/cli.js init",
     "server": "node src/server.js",
-    "web": "node src/server.js"
+    "web": "node src/server.js",
+    "build": "echo 'No build step required'",
+    "vercel-build": "echo 'Build complete'"
   },
   "keywords": [
     "comic",

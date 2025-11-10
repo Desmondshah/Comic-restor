@@ -69,7 +69,17 @@ Then open http://localhost:3000 in your browser!
 
 See **[WEB_UI_GUIDE.md](WEB_UI_GUIDE.md)** for details.
 
-### Option 2: Command Line
+### Option 2: Deploy to Vercel ☁️
+
+Deploy this project to Vercel for cloud hosting:
+
+1. Click the deploy button or follow **[VERCEL_DEPLOYMENT.md](VERCEL_DEPLOYMENT.md)**
+2. Add your `REPLICATE_API_TOKEN` in environment variables
+3. Your comic restoration tool is now online!
+
+**Note**: Vercel has serverless limitations. For full features (WebSockets, file persistence), see the deployment guide for recommendations.
+
+### Option 3: Command Line
 
 ```bash
 npm install
@@ -221,6 +231,7 @@ Available examples:
 
 ## Documentation
 
+- **[VERCEL_DEPLOYMENT.md](VERCEL_DEPLOYMENT.md)** - ☁️ Deploy to Vercel cloud hosting
 - **[AI_DAMAGE_RESTORATION_GUIDE.md](AI_DAMAGE_RESTORATION_GUIDE.md)** - ⭐ NEW: Complete AI damage restoration guide
 - **[AI_DAMAGE_QUICK_REF.md](AI_DAMAGE_QUICK_REF.md)** - ⭐ NEW: Quick reference for AI restoration
 - **[PRESET_COMPARISON_GUIDE.md](PRESET_COMPARISON_GUIDE.md)** - Complete guide to preset management and comparison features

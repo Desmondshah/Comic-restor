@@ -672,9 +672,13 @@ app.get("/api/preview/:filename", (req, res) => {
   res.sendFile(filePath);
 });
 
-// Start HTTP server
-const server = app.listen(PORT, () => {
-  console.log(`
+// Start HTTP server (only when not in Vercel)
+let server;
+let wss;
+
+if (process.env.VERCEL !== '1') {
+  server = app.listen(PORT, () => {
+    console.log(`
 ╔════════════════════════════════════════════════════════╗
 ║                                                        ║
 ║   📘 Comic Restoration Pipeline - Web Interface       ║
@@ -692,8 +696,8 @@ const server = app.listen(PORT, () => {
 ╚════════════════════════════════════════════════════════╝
   `);
 
-  if (!process.env.REPLICATE_API_TOKEN) {
-    console.warn(`
+    if (!process.env.REPLICATE_API_TOKEN) {
+      console.warn(`
 ⚠️  WARNING: REPLICATE_API_TOKEN not set!
    Token value: ${process.env.REPLICATE_API_TOKEN || '(empty)'}
    Add your token to .env file to enable restoration.
@@ -702,45 +706,48 @@ const server = app.listen(PORT, () => {
    Make sure .env file is in the project root with:
    REPLICATE_API_TOKEN=r8_your_token_here
     `);
-  } else {
-    console.log(`
+    } else {
+      console.log(`
 ✅ API Token loaded: ${process.env.REPLICATE_API_TOKEN.substring(0, 8)}...
     `);
-  }
-});
-
-// Setup WebSocket server
-const wss = new WebSocketServer({ server });
-
-wss.on("connection", (ws) => {
-  console.log("WebSocket client connected");
-  wsClients.add(ws);
-
-  // Send current jobs on connect
-  ws.send(JSON.stringify({
-    type: "jobs-list",
-    jobs: Array.from(jobs.values())
-  }));
-
-  ws.on("close", () => {
-    console.log("WebSocket client disconnected");
-    wsClients.delete(ws);
+    }
   });
 
-  ws.on("error", (error) => {
-    console.error("WebSocket error:", error);
-    wsClients.delete(ws);
-  });
-});
+  // Setup WebSocket server (only for local)
+  wss = new WebSocketServer({ server });
 
-// Cleanup on exit
-process.on("SIGINT", () => {
-  console.log("\nShutting down server...");
-  wss.close();
-  server.close(() => {
-    console.log("Server closed");
-    process.exit(0);
+  wss.on("connection", (ws) => {
+    console.log("WebSocket client connected");
+    wsClients.add(ws);
+
+    // Send current jobs on connect
+    ws.send(JSON.stringify({
+      type: "jobs-list",
+      jobs: Array.from(jobs.values())
+    }));
+
+    ws.on("close", () => {
+      console.log("WebSocket client disconnected");
+      wsClients.delete(ws);
+    });
+
+    ws.on("error", (error) => {
+      console.error("WebSocket error:", error);
+      wsClients.delete(ws);
+    });
   });
-});
+
+  // Cleanup on exit
+  process.on("SIGINT", () => {
+    console.log("\nShutting down server...");
+    if (wss) wss.close();
+    if (server) {
+      server.close(() => {
+        console.log("Server closed");
+        process.exit(0);
+      });
+    }
+  });
+}
 
 export default app;
