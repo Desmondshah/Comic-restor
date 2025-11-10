@@ -24,6 +24,9 @@
       -webkit-touch-callout: none;
       /* Prevent double-tap zoom on all elements */
       touch-action: manipulation;
+      /* Fix iOS rendering glitches */
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
     }
 
     /* Improved iOS scrolling */
@@ -32,11 +35,18 @@
       overflow-scrolling: touch;
       /* Prevent zoom on double-tap */
       touch-action: manipulation;
+      /* Fix iOS 3D transform issues */
+      -webkit-transform-style: preserve-3d;
+      transform-style: preserve-3d;
     }
 
     body {
       /* Prevent zoom on double-tap */
       touch-action: manipulation;
+      /* Hardware acceleration */
+      -webkit-transform: translateZ(0);
+      transform: translateZ(0);
+      will-change: transform;
     }
 
     :root {
@@ -67,6 +77,41 @@
       overflow-x: hidden;
       position: relative;
       /* Optimized for mobile - simplified background */
+      /* Prevent iOS stretching/3D effects */
+      -webkit-transform: translate3d(0, 0, 0);
+      transform: translate3d(0, 0, 0);
+      -webkit-backface-visibility: hidden;
+      backface-visibility: hidden;
+      -webkit-perspective: 1000;
+      perspective: 1000;
+    }
+
+    /* Fix iOS transform glitches on all interactive elements */
+    @media (max-width: 768px) {
+      button, 
+      input, 
+      select, 
+      textarea,
+      .btn,
+      .card,
+      .upload-zone {
+        -webkit-transform: translate3d(0, 0, 0);
+        transform: translate3d(0, 0, 0);
+        -webkit-backface-visibility: hidden;
+        backface-visibility: hidden;
+      }
+
+      /* Disable all transforms on active/focus for mobile */
+      button:active,
+      input:active,
+      input:focus,
+      select:active,
+      select:focus,
+      .btn:active,
+      .card:active {
+        transform: none !important;
+        -webkit-transform: none !important;
+      }
     }
 
     /* Desktop-only decorative backgrounds */
@@ -616,6 +661,14 @@
     .btn:active {
       transform: translate(2px, 2px);
       box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.6);
+    }
+
+    /* Disable transforms on mobile to prevent iOS stretching */
+    @media (max-width: 768px) {
+      .btn:active {
+        transform: none;
+        opacity: 0.8;
+      }
     }
 
     .btn:disabled {
