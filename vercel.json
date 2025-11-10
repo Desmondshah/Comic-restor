@@ -1,15 +1,27 @@
 {
   "version": 2,
+  "framework": null,
+  "buildCommand": "npm install",
+  "installCommand": "npm install",
+  "outputDirectory": "public",
   "builds": [
     {
       "src": "src/server.js",
       "use": "@vercel/node"
+    },
+    {
+      "src": "public/**",
+      "use": "@vercel/static"
     }
   ],
   "routes": [
     {
       "src": "/api/(.*)",
       "dest": "src/server.js"
+    },
+    {
+      "src": "/(.*\\.(js|css|html|png|jpg|jpeg|gif|svg|ico))",
+      "dest": "public/$1"
     },
     {
       "src": "/(.*)",
