@@ -1,6 +1,8 @@
 // Vercel serverless function entry point
 import express from 'express';
 import cors from 'cors';
+import { ConvexHttpClient } from 'convex/browser';
+import { api } from '../convex/_generated/api.js';
 
 const app = express();
 
@@ -12,12 +14,12 @@ app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 // Serve static files from public directory
 app.use(express.static('public'));
 
-// Simple in-memory storage for uploaded files (temporary)
-// In production, you'd use a proper storage service
-const uploads = new Map();
-const jobs = new Map();
-let uploadCounter = 0;
-let jobCounter = 0;
+// Initialize Convex client
+const convexUrl = process.env.CONVEX_URL || process.env.NEXT_PUBLIC_CONVEX_URL;
+let convex;
+if (convexUrl) {
+  convex = new ConvexHttpClient(convexUrl);
+}
 
 /**
  * POST /api/upload - Upload image via base64
@@ -25,7 +27,20 @@ let jobCounter = 0;
 app.post('/api/upload', async (req, res) => {
   try {
     console.log('Upload request received');
+    console.log('Convex URL:', convexUrl);
+    console.log('Convex client initialized:', !!convex);
     
+    if (!convex) {
+      console.error('Convex not configured. URL:', convexUrl);
+      return res.status(500).json({ 
+        error: 'Convex not configured. Please set CONVEX_URL environment variable.',
+        debug: {
+          convexUrl: convexUrl,
+          env: Object.keys(process.env).filter(k => k.includes('CONVEX'))
+        }
+      });
+    }
+
     const { image, filename } = req.body;
     
     if (!image) {
@@ -35,22 +50,23 @@ app.post('/api/upload', async (req, res) => {
 
     console.log('Processing image upload for:', filename);
 
-    // Generate unique ID
-    const uploadId = `upload_${++uploadCounter}_${Date.now()}`;
+    // Image should be base64 encoded
+    const base64Data = image.replace(/^data:image\/\w+;base64,/, '');
     
-    // Store the base64 image data
-    uploads.set(uploadId, {
-      imageData: image,
-      filename: filename || 'upload.jpg',
-      uploadedAt: new Date().toISOString()
+    console.log('Calling Convex mutation...');
+    
+    // Store in Convex
+    const result = await convex.mutation(api.restoration.uploadImage, {
+      imageData: base64Data,
+      filename: filename || 'upload.jpg'
     });
 
-    console.log('Upload successful:', uploadId);
+    console.log('Upload successful:', result);
 
     res.json({
       success: true,
-      filename: filename,
-      storageId: uploadId,
+      filename: result.filename,
+      storageId: result.storageId,
       originalName: filename
     });
   } catch (error) {
@@ -67,30 +83,24 @@ app.post('/api/upload', async (req, res) => {
  */
 app.post('/api/restore', async (req, res) => {
   try {
+    if (!convex) {
+      return res.status(500).json({ 
+        error: 'Convex not configured' 
+      });
+    }
+
     const { storageId, options = {} } = req.body;
 
     if (!storageId) {
       return res.status(400).json({ error: 'No storageId provided' });
     }
 
-    // Check if upload exists
-    if (!uploads.has(storageId)) {
-      return res.status(404).json({ error: 'Upload not found' });
-    }
-
-    // Create job
-    const jobId = `job_${++jobCounter}_${Date.now()}`;
-    jobs.set(jobId, {
-      jobId,
-      status: 'pending',
+    // Create restoration job in Convex
+    const jobId = await convex.mutation(api.restoration.createJob, {
       storageId,
-      options,
-      progress: 0,
-      createdAt: new Date().toISOString()
+      options
     });
 
-    // Note: Actual processing would happen in a background worker
-    // For now, just return the job ID
     res.json({
       success: true,
       jobId,
@@ -109,7 +119,13 @@ app.post('/api/restore', async (req, res) => {
  */
 app.get('/api/jobs/:id', async (req, res) => {
   try {
-    const job = jobs.get(req.params.id);
+    if (!convex) {
+      return res.status(500).json({ error: 'Convex not configured' });
+    }
+
+    const job = await convex.query(api.restoration.getJob, {
+      jobId: req.params.id
+    });
 
     if (!job) {
       return res.status(404).json({ error: 'Job not found' });
@@ -125,30 +141,19 @@ app.get('/api/jobs/:id', async (req, res) => {
 });
 
 /**
- * GET /api/jobs - List all jobs
- */
-app.get('/api/jobs', async (req, res) => {
-  try {
-    const allJobs = Array.from(jobs.values());
-    res.json(allJobs);
-  } catch (error) {
-    console.error('List jobs error:', error);
-    res.status(500).json({ 
-      error: error.message || 'Failed to list jobs' 
-    });
-  }
-});
-
-/**
  * Health check
  */
 app.get('/api/health', (req, res) => {
   res.json({ 
     status: 'ok', 
     timestamp: new Date().toISOString(),
-    stats: {
-      uploads: uploads.size,
-      jobs: jobs.size
+    convexConfigured: !!convex,
+    convexUrl: convexUrl,
+    env: {
+      nodeEnv: process.env.NODE_ENV,
+      hasConvexUrl: !!process.env.CONVEX_URL,
+      hasNextPublicConvexUrl: !!process.env.NEXT_PUBLIC_CONVEX_URL,
+      hasReplicateToken: !!process.env.REPLICATE_API_TOKEN
     }
   });
 });
