@@ -334,6 +334,8 @@ function setupEventListeners() {
   const aiRestoreOptions = document.getElementById('aiRestoreOptions');
   const aiStrength = document.getElementById('aiStrength');
   const aiStrengthValue = document.getElementById('aiStrengthValue');
+  const aiGuidanceScale = document.getElementById('aiGuidanceScale');
+  const aiGuidanceScaleValue = document.getElementById('aiGuidanceScaleValue');
   
   if (enableAIRestore) {
     enableAIRestore.addEventListener('change', (e) => {
@@ -347,6 +349,13 @@ function setupEventListeners() {
     aiStrength.addEventListener('input', (e) => {
       const value = (parseInt(e.target.value) / 100).toFixed(2);
       aiStrengthValue.textContent = value;
+    });
+  }
+  
+  if (aiGuidanceScale && aiGuidanceScaleValue) {
+    aiGuidanceScale.addEventListener('input', (e) => {
+      const value = parseFloat(e.target.value).toFixed(1);
+      aiGuidanceScaleValue.textContent = value;
     });
   }
 
@@ -1327,7 +1336,8 @@ async function startRestoration() {
     aiPreserveLogo: document.getElementById('aiPreserveLogo')?.checked || true,
     aiPreserveSignature: document.getElementById('aiPreserveSignature')?.checked || true,
     aiModernStyle: document.getElementById('aiModernStyle')?.checked || true,
-    aiStrength: parseInt(document.getElementById('aiStrength')?.value || 80) / 100
+    aiStrength: parseInt(document.getElementById('aiStrength')?.value || 80) / 100,
+    aiGuidanceScale: parseFloat(document.getElementById('aiGuidanceScale')?.value || 7.5)
   };
   
   // Determine if batch or single restoration

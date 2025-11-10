@@ -126,6 +126,7 @@ async function processJob(jobId) {
     console.log('\n🔍 DEBUG: Job Options:', {
       enableAIRestore: job.options.enableAIRestore,
       aiStrength: job.options.aiStrength,
+      aiGuidanceScale: job.options.aiGuidanceScale,
       aiPreserveLogo: job.options.aiPreserveLogo,
       aiPreserveSignature: job.options.aiPreserveSignature,
       aiModernStyle: job.options.aiModernStyle
@@ -149,6 +150,7 @@ async function processJob(jobId) {
         preserveSignature: job.options.aiPreserveSignature !== false,
         modernStyle: job.options.aiModernStyle !== false,
         strength: job.options.aiStrength || 0.8,
+        guidance_scale: job.options.aiGuidanceScale || 7.5,
       };
       
       await restorer.restoreDamage(job.inputPath, aiOutputPath, aiOptions);

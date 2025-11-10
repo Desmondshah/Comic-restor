@@ -1807,10 +1807,21 @@
                   <span style="color: var(--text-muted); font-size: 0.9rem;">Apply modern remaster style</span>
                 </label>
               </div>
-              <div class="form-group" style="margin-bottom: 0;">
+              <div class="form-group" style="margin-bottom: 10px;">
                 <label style="font-size: 0.9rem; color: var(--text-muted);">AI Strength</label>
                 <input type="range" id="aiStrength" min="0" max="100" value="80" style="width: 100%; cursor: pointer;">
                 <span id="aiStrengthValue" style="font-size: 0.85rem; color: var(--text-muted);">0.8</span>
+              </div>
+              <div class="form-group" style="margin-bottom: 0;">
+                <label style="font-size: 0.9rem; color: var(--text-muted);">
+                  Guidance Scale
+                  <span style="color: var(--primary); font-size: 0.75rem; font-weight: 600;">✨ NEW</span>
+                </label>
+                <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 5px;">
+                  Higher = more dramatic enhancements & muscle shadows
+                </div>
+                <input type="range" id="aiGuidanceScale" min="1" max="20" value="7.5" step="0.5" style="width: 100%; cursor: pointer;">
+                <span id="aiGuidanceScaleValue" style="font-size: 0.85rem; color: var(--text-muted);">7.5</span>
               </div>
             </div>
           </div>
