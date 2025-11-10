@@ -673,6 +673,11 @@ app.get("/api/preview/:filename", (req, res) => {
   res.sendFile(filePath);
 });
 
+// Catch-all route - serve index.html for any unmatched routes
+app.get("*", (req, res) => {
+  res.sendFile(path.join(__dirname, "..", "public", "index.html"));
+});
+
 // Start HTTP server (only when not in Vercel)
 let server;
 let wss;
