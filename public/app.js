@@ -2,6 +2,43 @@
  * Comic Restoration Pipeline - Web UI JavaScript
  */
 
+// ============ UTILITY FUNCTIONS ============
+
+// Debounce function for performance optimization
+function debounce(func, wait) {
+  let timeout;
+  return function executedFunction(...args) {
+    const later = () => {
+      clearTimeout(timeout);
+      func(...args);
+    };
+    clearTimeout(timeout);
+    timeout = setTimeout(later, wait);
+  };
+}
+
+// Throttle function for scroll/touch events
+function throttle(func, limit) {
+  let inThrottle;
+  return function(...args) {
+    if (!inThrottle) {
+      func.apply(this, args);
+      inThrottle = true;
+      setTimeout(() => inThrottle = false, limit);
+    }
+  };
+}
+
+// Detect iOS device
+function isIOS() {
+  return /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+}
+
+// Detect if device has limited resources
+function isLowEndDevice() {
+  return navigator.hardwareConcurrency <= 4 || navigator.deviceMemory <= 4;
+}
+
 // State
 let uploadedFiles = []; // Array to store multiple files with their metadata
 let uploadedFilenames = []; // Array of filenames uploaded to server
@@ -206,15 +243,15 @@ function setupEventListeners() {
     });
   }
   
-  // Image upload - drag & drop
+  // Image upload - drag & drop (optimized for mobile)
   uploadZone.addEventListener('dragover', (e) => {
     e.preventDefault();
     uploadZone.classList.add('dragover');
-  });
+  }, { passive: false });
   
   uploadZone.addEventListener('dragleave', () => {
     uploadZone.classList.remove('dragover');
-  });
+  }, { passive: true });
   
   uploadZone.addEventListener('drop', (e) => {
     e.preventDefault();
@@ -225,7 +262,8 @@ function setupEventListeners() {
       imageInput.files = files;
       handleImageUpload(false);
     }
-  });
+  }, { passive: false });
+
   
   // Mask upload
   maskZone.addEventListener('click', (e) => {
@@ -418,58 +456,61 @@ function setupEventListeners() {
 
 // ============ FILE UPLOAD ============
 
-/**
- * Optimized file upload for Vercel/production
- * Uses compressed base64 to avoid multipart form-data issues
- */
-async function uploadFileOptimized(file) {
-  return new Promise((resolve, reject) => {
+// Compress image for mobile devices to improve performance
+async function compressImageForMobile(file) {
+  // Only compress on iOS or low-end devices
+  if (!isIOS() && !isLowEndDevice()) {
+    return file;
+  }
+
+  // Skip if file is already small (< 5MB)
+  if (file.size < 5 * 1024 * 1024) {
+    return file;
+  }
+
+  return new Promise((resolve) => {
     const reader = new FileReader();
-    
-    reader.onload = async () => {
-      try {
-        const base64 = reader.result;
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
         
-        console.log(`📦 Original size: ${(file.size / 1024 / 1024).toFixed(2)}MB`);
-        console.log(`📦 Base64 size: ${(base64.length / 1024 / 1024).toFixed(2)}MB`);
+        // Calculate new dimensions (max 2048px on longest side for mobile)
+        const maxDimension = 2048;
+        let width = img.width;
+        let height = img.height;
         
-        const startTime = Date.now();
-        
-        const response = await fetch('/api/upload', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            file: base64,
-            filename: file.name
-          })
-        });
-        
-        const uploadTime = Date.now() - startTime;
-        console.log(`⏱️  Upload completed in ${(uploadTime / 1000).toFixed(1)}s`);
-        
-        if (!response.ok) {
-          const error = await response.json();
-          
-          // Check if it's a blob storage configuration error
-          if (error.error && error.error.includes('Blob storage not configured')) {
-            throw new Error('Vercel Blob Storage not configured. Please create a blob store: run "vercel blob create" or use FormData upload instead.');
+        if (width > maxDimension || height > maxDimension) {
+          if (width > height) {
+            height = (height / width) * maxDimension;
+            width = maxDimension;
+          } else {
+            width = (width / height) * maxDimension;
+            height = maxDimension;
           }
-          
-          throw new Error(error.error || `Upload failed: ${response.status}`);
         }
         
-        const data = await response.json();
-        resolve(data);
+        canvas.width = width;
+        canvas.height = height;
         
-      } catch (error) {
-        reject(error);
-      }
+        // Use better quality settings
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
+        ctx.drawImage(img, 0, 0, width, height);
+        
+        // Convert to blob with quality 0.9
+        canvas.toBlob((blob) => {
+          const compressedFile = new File([blob], file.name, {
+            type: 'image/jpeg',
+            lastModified: Date.now()
+          });
+          console.log(`Compressed: ${(file.size / 1024 / 1024).toFixed(2)}MB -> ${(compressedFile.size / 1024 / 1024).toFixed(2)}MB`);
+          resolve(compressedFile);
+        }, 'image/jpeg', 0.9);
+      };
+      img.src = e.target.result;
     };
-    
-    reader.onerror = () => {
-      reject(new Error('Failed to read file'));
-    };
-    
     reader.readAsDataURL(file);
   });
 }
@@ -491,20 +532,9 @@ async function handleImageUpload(appendMode = false) {
   try {
     uploadText.innerHTML = '<div class="spinner"></div> Uploading...';
     
-    // Detect if we're in production (Vercel) or local
-    // Check for vercel.app domain or custom domains (not localhost/127.0.0.1)
-    const isLocalDev = window.location.hostname === 'localhost' 
-      || window.location.hostname.includes('127.0.0.1')
-      || window.location.hostname === '';
-    
-    const isVercel = !isLocalDev && window.location.hostname.includes('vercel.app');
-    
-    console.log(`🌍 Environment: ${isLocalDev ? 'Local' : 'Production'}`);
-    console.log(`🌐 Platform: ${isVercel ? 'Vercel' : 'Other'}`);
-    
     // Upload each file
     for (let i = 0; i < files.length; i++) {
-      const file = files[i];
+      let file = files[i];
       
       // Update progress
       uploadText.innerHTML = `<div class="spinner"></div> Uploading ${i + 1}/${files.length}: ${file.name}`;
@@ -516,52 +546,20 @@ async function handleImageUpload(appendMode = false) {
         continue;
       }
       
-      let data;
-      let uploadMethod = 'FormData';
+      // Compress image on mobile devices
+      file = await compressImageForMobile(file);
       
-      // Try optimized upload for Vercel, fall back to FormData if it fails
-      if (isVercel) {
-        try {
-          console.log(`📤 Attempting optimized upload for Vercel: ${file.name}`);
-          uploadMethod = 'Optimized (Base64)';
-          data = await uploadFileOptimized(file);
-        } catch (error) {
-          console.warn(`⚠️ Optimized upload failed, falling back to FormData:`, error.message);
-          uploadMethod = 'FormData (Fallback)';
-          // Fall back to FormData
-          const formData = new FormData();
-          formData.append('image', file);
-          
-          const response = await fetch('/api/upload', {
-            method: 'POST',
-            body: formData
-          });
-          
-          if (!response.ok) {
-            throw new Error(`Upload failed: ${response.status} ${response.statusText}`);
-          }
-          
-          data = await response.json();
-        }
-      } else {
-        // Use FormData for local development
-        console.log(`📤 Using FormData upload: ${file.name}`);
-        const formData = new FormData();
-        formData.append('image', file);
-        
-        const response = await fetch('/api/upload', {
-          method: 'POST',
-          body: formData
-        });
-        
-        if (!response.ok) {
-          throw new Error(`Upload failed: ${response.status} ${response.statusText}`);
-        }
-        
-        data = await response.json();
-      }
+      // Use FormData for faster upload (no base64 conversion)
+      const formData = new FormData();
+      formData.append('image', file);
       
-      console.log(`✅ Upload successful (${uploadMethod}):`, data);
+      const response = await fetch('/api/upload', {
+        method: 'POST',
+        body: formData // Don't set Content-Type header - browser will set it with boundary
+      });
+      
+      const data = await response.json();
+      console.log(`Upload response for ${file.name}:`, data);
       
       if (data.success) {
         // Store file info
@@ -569,7 +567,6 @@ async function handleImageUpload(appendMode = false) {
           file: file,
           filename: data.filename,
           storageId: data.storageId,
-          url: data.url, // Blob URL for production
           originalName: data.originalName || file.name,
           size: file.size
         });
@@ -825,7 +822,7 @@ function setupCanvasListeners() {
   maskCanvas.addEventListener('mouseup', stopDrawing);
   maskCanvas.addEventListener('mouseout', stopDrawing);
   
-  // Touch support for tablets
+  // Optimized touch support for iOS and tablets
   maskCanvas.addEventListener('touchstart', (e) => {
     e.preventDefault();
     const touch = e.touches[0];
@@ -834,9 +831,10 @@ function setupCanvasListeners() {
       clientY: touch.clientY
     });
     maskCanvas.dispatchEvent(mouseEvent);
-  });
+  }, { passive: false });
   
-  maskCanvas.addEventListener('touchmove', (e) => {
+  // Throttle touch move for better performance on mobile
+  const throttledTouchMove = throttle((e) => {
     e.preventDefault();
     const touch = e.touches[0];
     const mouseEvent = new MouseEvent('mousemove', {
@@ -844,13 +842,15 @@ function setupCanvasListeners() {
       clientY: touch.clientY
     });
     maskCanvas.dispatchEvent(mouseEvent);
-  });
+  }, 16); // ~60fps
+  
+  maskCanvas.addEventListener('touchmove', throttledTouchMove, { passive: false });
   
   maskCanvas.addEventListener('touchend', (e) => {
     e.preventDefault();
     const mouseEvent = new MouseEvent('mouseup', {});
     maskCanvas.dispatchEvent(mouseEvent);
-  });
+  }, { passive: false });
 }
 
 function startDrawing(e) {
