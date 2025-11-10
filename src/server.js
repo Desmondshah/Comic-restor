@@ -18,6 +18,7 @@ import { analyzeQuality, checkPrintReadiness } from "./qa-checks.js";
 import { loadConfig } from "./config.js";
 import { batchProcess } from "./batch-processor.js";
 import { createMultiPagePDF } from "./pdf-export.js";
+import { AIDamageRestoration } from "./ai-damage-restoration.js";
 
 // ES Module __dirname equivalent
 const __filename = fileURLToPath(import.meta.url);
@@ -120,19 +121,70 @@ async function processJob(jobId) {
     // Load configuration
     const config = loadConfig(job.options);
 
-    // Step 1: Upscale
-    updateJobStatus(jobId, { status: "processing", stage: "upscaling", progress: 20 });
-    
-    let restoredBuffer = await restorePage(job.inputPath, {
-      maskPath: job.maskPath,
-      scale: job.options.scale || config.upscale.scale,
-      faceEnhance: job.options.faceEnhance || config.upscale.faceEnhance,
-      useFaceRestore: job.options.useFaceRestore || config.faceRestore.enabled,
-      extractOCR: job.options.extractOCR || config.ocr.enabled,
-      // Lighting options
-      applyLighting: job.options.lightingPreset !== 'none',
-      lightingPreset: job.options.lightingPreset || 'modern-reprint'
+    // Debug logging
+    console.log('\n🔍 DEBUG: Job Options:', {
+      enableAIRestore: job.options.enableAIRestore,
+      aiStrength: job.options.aiStrength,
+      aiPreserveLogo: job.options.aiPreserveLogo,
+      aiPreserveSignature: job.options.aiPreserveSignature,
+      aiModernStyle: job.options.aiModernStyle
     });
+
+    let restoredBuffer;
+    
+    // Check if AI damage restoration is enabled
+    if (job.options.enableAIRestore) {
+      console.log('✅ AI Damage Restoration ENABLED - Running Google Nano Banana...');
+      
+      // Step 1: AI Damage Restoration
+      updateJobStatus(jobId, { status: "processing", stage: "ai-damage-restoration", progress: 20 });
+      
+      const restorer = new AIDamageRestoration();
+      const basename = path.basename(job.inputPath, path.extname(job.inputPath));
+      const aiOutputPath = path.join(TEMP_DIR, `${basename}_ai_restored.jpg`);
+      
+      const aiOptions = {
+        preserveLogo: job.options.aiPreserveLogo !== false,
+        preserveSignature: job.options.aiPreserveSignature !== false,
+        modernStyle: job.options.aiModernStyle !== false,
+        strength: job.options.aiStrength || 0.8,
+      };
+      
+      await restorer.restoreDamage(job.inputPath, aiOutputPath, aiOptions);
+      
+      // Use AI-restored image as input for next step
+      updateJobStatus(jobId, { status: "processing", stage: "upscaling", progress: 50 });
+      
+      restoredBuffer = await restorePage(aiOutputPath, {
+        maskPath: job.maskPath,
+        scale: job.options.scale || config.upscale.scale,
+        faceEnhance: job.options.faceEnhance || config.upscale.faceEnhance,
+        useFaceRestore: job.options.useFaceRestore || config.faceRestore.enabled,
+        extractOCR: job.options.extractOCR || config.ocr.enabled,
+        applyLighting: job.options.lightingPreset !== 'none',
+        lightingPreset: job.options.lightingPreset || 'modern-reprint'
+      });
+      
+      // Clean up temp file
+      if (fs.existsSync(aiOutputPath)) {
+        fs.unlinkSync(aiOutputPath);
+      }
+    } else {
+      console.log('⚠️  AI Damage Restoration DISABLED - Skipping Nano Banana, going straight to upscaling');
+      
+      // Step 1: Standard Upscaling (without AI damage restoration)
+      updateJobStatus(jobId, { status: "processing", stage: "upscaling", progress: 20 });
+      
+      restoredBuffer = await restorePage(job.inputPath, {
+        maskPath: job.maskPath,
+        scale: job.options.scale || config.upscale.scale,
+        faceEnhance: job.options.faceEnhance || config.upscale.faceEnhance,
+        useFaceRestore: job.options.useFaceRestore || config.faceRestore.enabled,
+        extractOCR: job.options.extractOCR || config.ocr.enabled,
+        applyLighting: job.options.lightingPreset !== 'none',
+        lightingPreset: job.options.lightingPreset || 'modern-reprint'
+      });
+    }
 
     // Step 2: Quality checks
     updateJobStatus(jobId, { status: "processing", stage: "quality-check", progress: 70 });

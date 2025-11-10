@@ -13,7 +13,11 @@ Professional public-domain comic scan restoration using Replicate AI models, wit
   - Split view with draggable slider for precise comparisons
   - Side-by-side mode with synchronized zoom & pan
   - Perfect for quality checking and fine-tuning settings
-- **🎭 Damage Mask Editor**: Interactive canvas tool to mark stains, scratches, and tears for AI removal
+- **🤖 AI Damage Restoration**: Automatic damage removal with Google Nano Banana
+  - Auto-detect and remove scratches, dust, tears, and stains
+  - Preserve logos, titles, and artist signatures
+  - Modern remaster styling with vintage preservation options
+  - No manual mask creation required!
 - **AI-Powered Restoration**: Real-ESRGAN for upscaling/cleanup, LaMa for damage removal
 - **✨ Premium Lighting Effects**: Add depth, dynamic highlights & rim lighting for modern reprint quality
   - 4 professional presets (Modern Reprint, Dramatic, Subtle, Vintage Enhanced)
@@ -126,20 +130,22 @@ Create a `config.json` file for default settings:
 ## Models Used
 
 - **Real-ESRGAN** (nightmareai/real-esrgan): Upscaling & JPEG artifact removal
-- **LaMa** (zylim0702/remove-object): Scratch/tear inpainting
+- **Google Nano Banana** (google/nano-banana): AI-powered damage detection & restoration
+- **LaMa** (zylim0702/remove-object): Scratch/tear inpainting (legacy)
 - **GFPGAN** (tencentarc/gfpgan): Optional face restoration (use sparingly)
 - **OCR** (abiruyt/text-extract-ocr): Text extraction from balloons
 
 ## Tips for Best Results
 
-1. **Damage Mask**: Use the interactive mask editor to mark stains, scratches, and tears precisely
-2. **Era-Faithful**: Use inpainting only on damaged areas with masks
-3. **Matte Paper**: Enable matte compensation (+5-8 midtones) to prevent darkening
-4. **Face Enhancement**: Only enable for realistic comic styles, not manga/cartoons
-5. **Batch Processing**: Process sequentially to respect API rate limits
-6. **Quality Check**: Review histogram warnings for clipping issues
+1. **AI Damage Restoration**: Enable for automatic scratch/dust/tear removal - no manual work needed!
+2. **Era-Faithful**: Adjust AI strength (0.5-1.0) based on damage severity
+3. **Preservation Options**: Keep logos, signatures, and text intact with smart AI preservation
+4. **Matte Paper**: Enable matte compensation (+5-8 midtones) to prevent darkening
+5. **Face Enhancement**: Only enable for realistic comic styles, not manga/cartoons
+6. **Batch Processing**: Process sequentially to respect API rate limits
+7. **Quality Check**: Review histogram warnings for clipping issues
 
-See **[DAMAGE_MASK_GUIDE.md](DAMAGE_MASK_GUIDE.md)** for detailed mask editor instructions.
+See **[AI_DAMAGE_RESTORATION_GUIDE.md](AI_DAMAGE_RESTORATION_GUIDE.md)** for comprehensive AI restoration guide.
 
 ## Project Structure
 
@@ -215,6 +221,8 @@ Available examples:
 
 ## Documentation
 
+- **[AI_DAMAGE_RESTORATION_GUIDE.md](AI_DAMAGE_RESTORATION_GUIDE.md)** - ⭐ NEW: Complete AI damage restoration guide
+- **[AI_DAMAGE_QUICK_REF.md](AI_DAMAGE_QUICK_REF.md)** - ⭐ NEW: Quick reference for AI restoration
 - **[PRESET_COMPARISON_GUIDE.md](PRESET_COMPARISON_GUIDE.md)** - Complete guide to preset management and comparison features
 - **[PRESET_QUICK_REFERENCE.md](PRESET_QUICK_REFERENCE.md)** - Quick reference card for presets and comparison
 - **[UPDATE_GUIDE.md](UPDATE_GUIDE.md)** - What's new and how to migrate
@@ -223,7 +231,7 @@ Available examples:
 - **[QUICKSTART.md](QUICKSTART.md)** - Quick start guide
 - **[COLOR_CORRECTION_GUIDE.md](COLOR_CORRECTION_GUIDE.md)** - Color correction documentation
 - **[PREMIUM_LIGHTING_GUIDE.md](PREMIUM_LIGHTING_GUIDE.md)** - Lighting effects guide
-- **[DAMAGE_MASK_GUIDE.md](DAMAGE_MASK_GUIDE.md)** - Damage mask editor guide
+- **[DAMAGE_MASK_GUIDE.md](DAMAGE_MASK_GUIDE.md)** - Legacy damage mask editor guide
 
 ## License
 

@@ -262,6 +262,27 @@ function setupEventListeners() {
   // Restore button
   restoreBtn.addEventListener('click', startRestoration);
 
+  // AI Restoration controls
+  const enableAIRestore = document.getElementById('enableAIRestore');
+  const aiRestoreOptions = document.getElementById('aiRestoreOptions');
+  const aiStrength = document.getElementById('aiStrength');
+  const aiStrengthValue = document.getElementById('aiStrengthValue');
+  
+  if (enableAIRestore) {
+    enableAIRestore.addEventListener('change', (e) => {
+      if (aiRestoreOptions) {
+        aiRestoreOptions.style.display = e.target.checked ? 'block' : 'none';
+      }
+    });
+  }
+  
+  if (aiStrength && aiStrengthValue) {
+    aiStrength.addEventListener('input', (e) => {
+      const value = (parseInt(e.target.value) / 100).toFixed(2);
+      aiStrengthValue.textContent = value;
+    });
+  }
+
   // Preset controls
   const presetSelector = document.getElementById('presetSelector');
   const savePresetBtn = document.getElementById('savePresetBtn');
@@ -1153,7 +1174,13 @@ async function startRestoration() {
     extractOCR: extractOCR.checked,
     exportPDF: exportPDF.checked,
     // Lighting options
-    lightingPreset: document.getElementById('lightingPreset').value
+    lightingPreset: document.getElementById('lightingPreset').value,
+    // AI Damage Restoration options
+    enableAIRestore: document.getElementById('enableAIRestore')?.checked || false,
+    aiPreserveLogo: document.getElementById('aiPreserveLogo')?.checked || true,
+    aiPreserveSignature: document.getElementById('aiPreserveSignature')?.checked || true,
+    aiModernStyle: document.getElementById('aiModernStyle')?.checked || true,
+    aiStrength: parseInt(document.getElementById('aiStrength')?.value || 80) / 100
   };
   
   // Determine if batch or single restoration

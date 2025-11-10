@@ -1,5 +1,24 @@
 # Quick Start Guide
 
+## 🚀 New: AI Damage Restoration
+
+**Automatically remove scratches, dust, and damage without creating masks!**
+
+```powershell
+# Single image
+npm start -- ai-restore -i samples/page01.jpg
+
+# Batch processing
+npm start -- ai-restore -i samples/ --batch
+
+# With comparison
+npm start -- ai-restore -i samples/page01.jpg --comparison
+```
+
+See **[AI_DAMAGE_RESTORATION_GUIDE.md](AI_DAMAGE_RESTORATION_GUIDE.md)** for complete guide.
+
+---
+
 ## 1. Install Dependencies
 
 ```powershell

@@ -1462,13 +1462,57 @@
             <div id="batchPreviewGrid" class="batch-preview-grid"></div>
           </div>
 
-          <!-- Mask Upload (Optional) -->
-          <div class="upload-zone" id="maskZone" style="padding: 20px;">
+          <!-- AI Damage Restoration -->
+          <div style="padding: 20px; background: var(--bg-card); border: 2px solid var(--border); border-radius: 12px; backdrop-filter: blur(10px); margin-bottom: 20px;">
+            <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 15px;">
+              <div style="font-size: 1.5rem;">🤖</div>
+              <div>
+                <strong>AI Damage Restoration</strong> <span style="color: var(--success); font-weight: normal;">(New!)</span><br>
+                <span style="color: var(--text-muted); font-size: 0.85rem;">
+                  Automatically remove scratches, dust, and damage
+                </span>
+              </div>
+            </div>
+            <div style="margin-bottom: 15px;">
+              <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; user-select: none;">
+                <input type="checkbox" id="enableAIRestore" style="width: 18px; height: 18px; cursor: pointer;">
+                <span style="color: var(--text-secondary); font-weight: 500;">Enable AI Damage Restoration</span>
+              </label>
+            </div>
+            <div id="aiRestoreOptions" style="display: none; margin-top: 15px; padding: 15px; background: var(--bg-secondary); border-radius: 8px; border: 1px solid var(--border);">
+              <div style="margin-bottom: 10px;">
+                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; user-select: none;">
+                  <input type="checkbox" id="aiPreserveLogo" checked style="width: 16px; height: 16px; cursor: pointer;">
+                  <span style="color: var(--text-muted); font-size: 0.9rem;">Preserve logos & titles</span>
+                </label>
+              </div>
+              <div style="margin-bottom: 10px;">
+                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; user-select: none;">
+                  <input type="checkbox" id="aiPreserveSignature" checked style="width: 16px; height: 16px; cursor: pointer;">
+                  <span style="color: var(--text-muted); font-size: 0.9rem;">Preserve artist signatures</span>
+                </label>
+              </div>
+              <div style="margin-bottom: 10px;">
+                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; user-select: none;">
+                  <input type="checkbox" id="aiModernStyle" checked style="width: 16px; height: 16px; cursor: pointer;">
+                  <span style="color: var(--text-muted); font-size: 0.9rem;">Apply modern remaster style</span>
+                </label>
+              </div>
+              <div class="form-group" style="margin-bottom: 0;">
+                <label style="font-size: 0.9rem; color: var(--text-muted);">AI Strength</label>
+                <input type="range" id="aiStrength" min="0" max="100" value="80" style="width: 100%; cursor: pointer;">
+                <span id="aiStrengthValue" style="font-size: 0.85rem; color: var(--text-muted);">0.8</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Mask Upload (Optional - Legacy) -->
+          <div class="upload-zone" id="maskZone" style="padding: 20px; display: none;">
             <div style="font-size: 1.5rem;">🎭</div>
             <div id="maskText">
-              <strong>Damage Mask</strong> <span style="color: var(--danger); font-weight: normal;">(Currently Unavailable)</span><br>
+              <strong>Damage Mask</strong> <span style="color: var(--text-muted); font-weight: normal;">(Legacy)</span><br>
               <span style="color: var(--text-muted); font-size: 0.85rem;">
-                Inpainting models on Replicate are currently unavailable. Use external tools (Photoshop, GIMP) for damage removal.
+                Manual mask creation - use AI restoration instead
               </span>
             </div>
             <input type="file" id="maskInput" accept="image/png,image/jpeg,image/jpg" disabled>
