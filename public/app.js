@@ -439,6 +439,9 @@ async function handleImageUpload(appendMode = false) {
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
       
+      // Update progress
+      uploadText.innerHTML = `<div class="spinner"></div> Uploading ${i + 1}/${files.length}: ${file.name}`;
+      
       // Validate file type
       const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/tiff', 'image/tif'];
       if (!validTypes.includes(file.type) && !file.name.match(/\.(jpg|jpeg|png|tiff|tif)$/i)) {
@@ -446,18 +449,13 @@ async function handleImageUpload(appendMode = false) {
         continue;
       }
       
-      // Convert file to base64
-      const base64 = await fileToBase64(file);
+      // Use FormData for faster upload (no base64 conversion)
+      const formData = new FormData();
+      formData.append('image', file);
       
       const response = await fetch('/api/upload', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          image: base64,
-          filename: file.name
-        })
+        body: formData // Don't set Content-Type header - browser will set it with boundary
       });
       
       const data = await response.json();
