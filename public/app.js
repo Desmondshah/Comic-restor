@@ -449,6 +449,12 @@ async function uploadFileOptimized(file) {
         
         if (!response.ok) {
           const error = await response.json();
+          
+          // Check if it's a blob storage configuration error
+          if (error.error && error.error.includes('Blob storage not configured')) {
+            throw new Error('Vercel Blob Storage not configured. Please create a blob store: run "vercel blob create" or use FormData upload instead.');
+          }
+          
           throw new Error(error.error || `Upload failed: ${response.status}`);
         }
         
@@ -491,10 +497,10 @@ async function handleImageUpload(appendMode = false) {
       || window.location.hostname.includes('127.0.0.1')
       || window.location.hostname === '';
     
-    const useOptimizedUpload = !isLocalDev && window.location.hostname.includes('vercel.app');
+    const isVercel = !isLocalDev && window.location.hostname.includes('vercel.app');
     
     console.log(`🌍 Environment: ${isLocalDev ? 'Local' : 'Production'}`);
-    console.log(`📤 Upload method: ${useOptimizedUpload ? 'Optimized (Base64)' : 'Standard (FormData)'}`);
+    console.log(`🌐 Platform: ${isVercel ? 'Vercel' : 'Other'}`);
     
     // Upload each file
     for (let i = 0; i < files.length; i++) {
@@ -511,13 +517,34 @@ async function handleImageUpload(appendMode = false) {
       }
       
       let data;
+      let uploadMethod = 'FormData';
       
-      if (useOptimizedUpload) {
-        // Use optimized base64 upload for Vercel production
-        console.log(`📤 Using optimized upload for Vercel: ${file.name}`);
-        data = await uploadFileOptimized(file);
+      // Try optimized upload for Vercel, fall back to FormData if it fails
+      if (isVercel) {
+        try {
+          console.log(`📤 Attempting optimized upload for Vercel: ${file.name}`);
+          uploadMethod = 'Optimized (Base64)';
+          data = await uploadFileOptimized(file);
+        } catch (error) {
+          console.warn(`⚠️ Optimized upload failed, falling back to FormData:`, error.message);
+          uploadMethod = 'FormData (Fallback)';
+          // Fall back to FormData
+          const formData = new FormData();
+          formData.append('image', file);
+          
+          const response = await fetch('/api/upload', {
+            method: 'POST',
+            body: formData
+          });
+          
+          if (!response.ok) {
+            throw new Error(`Upload failed: ${response.status} ${response.statusText}`);
+          }
+          
+          data = await response.json();
+        }
       } else {
-        // Use FormData for local development or non-Vercel environments
+        // Use FormData for local development
         console.log(`📤 Using FormData upload: ${file.name}`);
         const formData = new FormData();
         formData.append('image', file);
@@ -534,7 +561,7 @@ async function handleImageUpload(appendMode = false) {
         data = await response.json();
       }
       
-      console.log(`Upload response for ${file.name}:`, data);
+      console.log(`✅ Upload successful (${uploadMethod}):`, data);
       
       if (data.success) {
         // Store file info
