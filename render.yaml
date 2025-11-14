@@ -3,7 +3,14 @@ services:
     name: comic-restoration
     runtime: node
     buildCommand: npm install
-    startCommand: npm start
+    startCommand: node src/server.js
+    plan: standard # Recommended for AI processing (512MB RAM minimum)
+    healthCheckPath: /
     envVars:
       - key: NODE_ENV
         value: production
+      - key: PORT
+        value: 3000
+      # Add your Replicate API token in Render dashboard
+      # - key: REPLICATE_API_TOKEN
+      #   sync: false # Set via dashboard for security

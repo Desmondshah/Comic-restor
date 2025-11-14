@@ -38,6 +38,16 @@ app.use(express.json({ limit: '100mb' })); // Increase limit for base64 images
 app.use(express.urlencoded({ limit: '100mb', extended: true }));
 app.use(express.static(path.join(__dirname, "..", "public")));
 
+// Increase server timeout for long AI processing operations
+app.use((req, res, next) => {
+  // Set timeout to 10 minutes for API endpoints
+  if (req.path.startsWith('/api/')) {
+    req.setTimeout(600000); // 10 minutes
+    res.setTimeout(600000);
+  }
+  next();
+});
+
 // Create directories
 const UPLOAD_DIR = path.join(__dirname, "..", "uploads");
 const OUTPUT_DIR = path.join(__dirname, "..", "output");
@@ -644,7 +654,7 @@ app.post("/api/restore-batch", async (req, res) => {
 });
 
 /**
- * GET /api/jobs/:id - Get job status
+ * GET /api/jobs/:id - Get job status (with keep-alive support)
  */
 app.get("/api/jobs/:id", (req, res) => {
   const jobId = parseInt(req.params.id);
@@ -654,6 +664,10 @@ app.get("/api/jobs/:id", (req, res) => {
     return res.status(404).json({ error: "Job not found" });
   }
 
+  // Set headers to prevent timeout on long-polling
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  
   res.json(job);
 });
 

@@ -187,32 +187,96 @@ function connectWebSocket() {
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
   const wsUrl = `${protocol}//${window.location.host}`;
   
-  ws = new WebSocket(wsUrl);
-  
-  ws.onopen = () => {
-    console.log('WebSocket connected');
-    reconnectAttempts = 0;
-  };
-  
-  ws.onmessage = (event) => {
-    const data = JSON.parse(event.data);
-    handleWebSocketMessage(data);
-  };
-  
-  ws.onclose = () => {
-    console.log('WebSocket disconnected');
-    if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
-      reconnectAttempts++;
-      setTimeout(connectWebSocket, 3000 * reconnectAttempts);
-    }
-  };
-  
-  ws.onerror = (error) => {
-    console.error('WebSocket error:', error);
-  };
+  // Check if WebSocket is available (not on serverless platforms like Vercel)
+  try {
+    ws = new WebSocket(wsUrl);
+    
+    ws.onopen = () => {
+      console.log('WebSocket connected');
+      reconnectAttempts = 0;
+    };
+
+    ws.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      handleWebSocketMessage(data);
+    };
+
+    ws.onclose = () => {
+      console.log('WebSocket disconnected');
+      if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
+        reconnectAttempts++;
+        setTimeout(connectWebSocket, 3000 * reconnectAttempts);
+      } else {
+        console.warn('WebSocket unavailable - switching to polling mode');
+        startPollingMode();
+      }
+    };
+
+    ws.onerror = (error) => {
+      console.error('WebSocket error:', error);
+      ws.close();
+    };
+  } catch (error) {
+    console.warn('WebSocket not supported - using polling mode');
+    startPollingMode();
+  }
 }
 
-function handleWebSocketMessage(data) {
+// Fallback polling mode for production/serverless environments
+let pollingInterval = null;
+let activeJobIds = new Set();
+
+function startPollingMode() {
+  if (pollingInterval) return; // Already polling
+  
+  console.log('Starting polling mode for job updates...');
+  
+  pollingInterval = setInterval(async () => {
+    if (activeJobIds.size === 0) return;
+    
+    // Poll each active job
+    for (const jobId of activeJobIds) {
+      try {
+        const response = await fetch(`/api/jobs/${jobId}`);
+        if (response.ok) {
+          const job = await response.json();
+          handleWebSocketMessage({
+            type: 'job-update',
+            jobId: job.id,
+            job: job
+          });
+          
+          // Remove from active jobs if completed or failed
+          if (job.status === 'completed' || job.status === 'failed') {
+            activeJobIds.delete(jobId);
+          }
+        }
+      } catch (error) {
+        console.error(`Failed to poll job ${jobId}:`, error);
+      }
+    }
+    
+    // Stop polling if no active jobs
+    if (activeJobIds.size === 0) {
+      stopPollingMode();
+    }
+  }, 3000); // Poll every 3 seconds
+}
+
+function stopPollingMode() {
+  if (pollingInterval) {
+    clearInterval(pollingInterval);
+    pollingInterval = null;
+    console.log('Stopped polling mode');
+  }
+}
+
+function addActiveJob(jobId) {
+  activeJobIds.add(jobId);
+  if (!ws || ws.readyState !== WebSocket.OPEN) {
+    startPollingMode();
+  }
+}function handleWebSocketMessage(data) {
   if (data.type === 'job-update') {
     updateJobCard(data.jobId, data.job);
   } else if (data.type === 'jobs-list') {
@@ -591,12 +655,19 @@ async function handleImageUpload(appendMode = false) {
   try {
     uploadText.innerHTML = '<div class="spinner"></div> Uploading...';
     
-    // Upload each file
+    // Upload each file with progress tracking
     for (let i = 0; i < files.length; i++) {
       let file = files[i];
       
-      // Update progress
-      uploadText.innerHTML = `<div class="spinner"></div> Uploading ${i + 1}/${files.length}: ${file.name}`;
+      // Update progress with percentage
+      const fileProgress = Math.round(((i) / files.length) * 100);
+      uploadText.innerHTML = `
+        <div class="spinner"></div> 
+        Uploading ${i + 1}/${files.length}: ${file.name.substring(0, 25)}...
+        <div style="width: 100%; background: rgba(255,255,255,0.1); border-radius: 4px; height: 4px; margin-top: 8px;">
+          <div style="width: ${fileProgress}%; background: var(--primary); height: 100%; border-radius: 4px; transition: width 0.3s;"></div>
+        </div>
+      `;
       
       // Validate file type
       const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/tiff', 'image/tif'];
@@ -612,27 +683,57 @@ async function handleImageUpload(appendMode = false) {
       const formData = new FormData();
       formData.append('image', file);
       
-      const response = await fetch('/api/upload', {
-        method: 'POST',
-        body: formData // Don't set Content-Type header - browser will set it with boundary
-      });
+      // Add retry logic for failed uploads
+      let uploadSuccess = false;
+      let retryCount = 0;
+      const maxRetries = 3;
       
-      const data = await response.json();
-      console.log(`Upload response for ${file.name}:`, data);
-      
-      if (data.success) {
-        // Store file info
-        uploadedFiles.push({
-          file: file,
-          filename: data.filename,
-          storageId: data.storageId,
-          originalName: data.originalName || file.name,
-          size: file.size
-        });
-        uploadedFilenames.push(data.filename);
-        
-        // Add to preview grid
-        addBatchPreviewItem(data.filename, data.originalName || file.name, uploadedFiles.length);
+      while (!uploadSuccess && retryCount < maxRetries) {
+        try {
+          const response = await fetch('/api/upload', {
+            method: 'POST',
+            body: formData,
+            // Add timeout for production (60 seconds)
+            signal: AbortSignal.timeout(60000)
+          });
+          
+          if (!response.ok) {
+            throw new Error(`Upload failed: ${response.status} ${response.statusText}`);
+          }
+          
+          const data = await response.json();
+          console.log(`Upload response for ${file.name}:`, data);
+          
+          if (data.success) {
+            // Store file info
+            uploadedFiles.push({
+              file: file,
+              filename: data.filename,
+              storageId: data.storageId,
+              originalName: data.originalName || file.name,
+              size: file.size
+            });
+            uploadedFilenames.push(data.filename);
+            
+            // Add to preview grid
+            addBatchPreviewItem(data.filename, data.originalName || file.name, uploadedFiles.length);
+            uploadSuccess = true;
+          }
+        } catch (uploadError) {
+          retryCount++;
+          console.warn(`Upload attempt ${retryCount} failed for ${file.name}:`, uploadError.message);
+          
+          if (retryCount < maxRetries) {
+            // Wait before retry (exponential backoff)
+            await new Promise(resolve => setTimeout(resolve, 1000 * retryCount));
+            uploadText.innerHTML = `
+              <div class="spinner"></div> 
+              Retrying ${file.name.substring(0, 25)}... (${retryCount}/${maxRetries})
+            `;
+          } else {
+            throw uploadError; // Re-throw after max retries
+          }
+        }
       }
     }
     
@@ -1392,12 +1493,19 @@ async function startRestoration() {
     const response = await fetch(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(requestPayload)
+      body: JSON.stringify(requestPayload),
+      // Increase timeout for production (5 minutes for AI processing)
+      signal: AbortSignal.timeout(300000)
     });
     
     const data = await response.json();
     
     if (data.success) {
+      // Track this job for polling updates
+      if (data.jobId) {
+        addActiveJob(data.jobId);
+      }
+      
       // Reset form
       clearAllBatchItems();
       uploadedMaskFilename = null;
