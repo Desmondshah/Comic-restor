@@ -787,12 +787,30 @@ if (process.env.VERCEL !== '1') {
   wss.on("connection", (ws) => {
     console.log("WebSocket client connected");
     wsClients.add(ws);
+    
+    // Set up ping/pong keep-alive to prevent Render timeout (55s)
+    ws.isAlive = true;
+    ws.on('pong', () => {
+      ws.isAlive = true;
+    });
 
     // Send current jobs on connect
     ws.send(JSON.stringify({
       type: "jobs-list",
       jobs: Array.from(jobs.values())
     }));
+    
+    // Handle ping messages from client
+    ws.on('message', (message) => {
+      try {
+        const data = JSON.parse(message);
+        if (data.type === 'ping') {
+          ws.send(JSON.stringify({ type: 'pong' }));
+        }
+      } catch (e) {
+        // Ignore parse errors
+      }
+    });
 
     ws.on("close", () => {
       console.log("WebSocket client disconnected");
@@ -804,10 +822,30 @@ if (process.env.VERCEL !== '1') {
       wsClients.delete(ws);
     });
   });
+  
+  // Ping all clients every 30 seconds to keep connections alive
+  const pingInterval = setInterval(() => {
+    wsClients.forEach((ws) => {
+      if (ws.isAlive === false) {
+        console.log('WebSocket client terminated (no pong received)');
+        wsClients.delete(ws);
+        return ws.terminate();
+      }
+      
+      ws.isAlive = false;
+      ws.ping();
+    });
+  }, 30000); // 30 seconds (Render timeout is 55s)
+  
+  // Cleanup ping interval
+  wss.on('close', () => {
+    clearInterval(pingInterval);
+  });
 
   // Cleanup on exit
   process.on("SIGINT", () => {
     console.log("\nShutting down server...");
+    clearInterval(pingInterval);
     if (wss) wss.close();
     if (server) {
       server.close(() => {

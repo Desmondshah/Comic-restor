@@ -194,6 +194,16 @@ function connectWebSocket() {
     ws.onopen = () => {
       console.log('WebSocket connected');
       reconnectAttempts = 0;
+      
+      // Send keep-alive ping every 30 seconds to prevent timeout
+      if (typeof window.wsKeepAlive !== 'undefined') {
+        clearInterval(window.wsKeepAlive);
+      }
+      window.wsKeepAlive = setInterval(() => {
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type: 'ping' }));
+        }
+      }, 30000); // 30 seconds (Render timeout is 55s)
     };
 
     ws.onmessage = (event) => {
@@ -203,9 +213,16 @@ function connectWebSocket() {
 
     ws.onclose = () => {
       console.log('WebSocket disconnected');
+      
+      // Clear keep-alive interval
+      if (typeof window.wsKeepAlive !== 'undefined') {
+        clearInterval(window.wsKeepAlive);
+      }
+      
       if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
         reconnectAttempts++;
-        setTimeout(connectWebSocket, 3000 * reconnectAttempts);
+        console.log(`Reconnecting WebSocket (attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})...`);
+        setTimeout(connectWebSocket, 2000 * reconnectAttempts); // Faster reconnect
       } else {
         console.warn('WebSocket unavailable - switching to polling mode');
         startPollingMode();
@@ -655,86 +672,41 @@ async function handleImageUpload(appendMode = false) {
   try {
     uploadText.innerHTML = '<div class="spinner"></div> Uploading...';
     
-    // Upload each file with progress tracking
-    for (let i = 0; i < files.length; i++) {
-      let file = files[i];
+    // PARALLEL UPLOAD - Upload multiple files at once for faster speed
+    const uploadPromises = [];
+    const maxConcurrentUploads = 5; // Upload 5 files at a time
+    
+    for (let i = 0; i < files.length; i += maxConcurrentUploads) {
+      const batch = files.slice(i, i + maxConcurrentUploads);
+      const batchProgress = Math.round((i / files.length) * 100);
       
-      // Update progress with percentage
-      const fileProgress = Math.round(((i) / files.length) * 100);
       uploadText.innerHTML = `
         <div class="spinner"></div> 
-        Uploading ${i + 1}/${files.length}: ${file.name.substring(0, 25)}...
+        Uploading batch ${Math.floor(i / maxConcurrentUploads) + 1}... (${i}/${files.length} files)
         <div style="width: 100%; background: rgba(255,255,255,0.1); border-radius: 4px; height: 4px; margin-top: 8px;">
-          <div style="width: ${fileProgress}%; background: var(--primary); height: 100%; border-radius: 4px; transition: width 0.3s;"></div>
+          <div style="width: ${batchProgress}%; background: var(--primary); height: 100%; border-radius: 4px; transition: width 0.3s;"></div>
         </div>
       `;
       
-      // Validate file type
-      const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/tiff', 'image/tif'];
-      if (!validTypes.includes(file.type) && !file.name.match(/\.(jpg|jpeg|png|tiff|tif)$/i)) {
-        console.warn(`Skipping invalid file type: ${file.name} (${file.type})`);
-        continue;
-      }
+      // Upload batch in parallel
+      const batchResults = await Promise.all(
+        batch.map(file => uploadSingleFile(file))
+      );
       
-      // Compress image on mobile devices
-      file = await compressImageForMobile(file);
-      
-      // Use FormData for faster upload (no base64 conversion)
-      const formData = new FormData();
-      formData.append('image', file);
-      
-      // Add retry logic for failed uploads
-      let uploadSuccess = false;
-      let retryCount = 0;
-      const maxRetries = 3;
-      
-      while (!uploadSuccess && retryCount < maxRetries) {
-        try {
-          const response = await fetch('/api/upload', {
-            method: 'POST',
-            body: formData,
-            // Add timeout for production (60 seconds)
-            signal: AbortSignal.timeout(60000)
+      // Process results
+      batchResults.forEach(result => {
+        if (result.success) {
+          uploadedFiles.push({
+            file: result.file,
+            filename: result.data.filename,
+            storageId: result.data.storageId,
+            originalName: result.data.originalName || result.file.name,
+            size: result.file.size
           });
-          
-          if (!response.ok) {
-            throw new Error(`Upload failed: ${response.status} ${response.statusText}`);
-          }
-          
-          const data = await response.json();
-          console.log(`Upload response for ${file.name}:`, data);
-          
-          if (data.success) {
-            // Store file info
-            uploadedFiles.push({
-              file: file,
-              filename: data.filename,
-              storageId: data.storageId,
-              originalName: data.originalName || file.name,
-              size: file.size
-            });
-            uploadedFilenames.push(data.filename);
-            
-            // Add to preview grid
-            addBatchPreviewItem(data.filename, data.originalName || file.name, uploadedFiles.length);
-            uploadSuccess = true;
-          }
-        } catch (uploadError) {
-          retryCount++;
-          console.warn(`Upload attempt ${retryCount} failed for ${file.name}:`, uploadError.message);
-          
-          if (retryCount < maxRetries) {
-            // Wait before retry (exponential backoff)
-            await new Promise(resolve => setTimeout(resolve, 1000 * retryCount));
-            uploadText.innerHTML = `
-              <div class="spinner"></div> 
-              Retrying ${file.name.substring(0, 25)}... (${retryCount}/${maxRetries})
-            `;
-          } else {
-            throw uploadError; // Re-throw after max retries
-          }
+          uploadedFilenames.push(result.data.filename);
+          addBatchPreviewItem(result.data.filename, result.data.originalName || result.file.name, uploadedFiles.length);
         }
-      }
+      });
     }
     
     // Update UI
@@ -782,6 +754,57 @@ function fileToBase64(file) {
     reader.onload = () => resolve(reader.result);
     reader.onerror = error => reject(error);
   });
+}
+
+// Helper function for uploading a single file with retry logic
+async function uploadSingleFile(file) {
+  // Validate file type
+  const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/tiff', 'image/tif'];
+  if (!validTypes.includes(file.type) && !file.name.match(/\.(jpg|jpeg|png|tiff|tif)$/i)) {
+    console.warn(`Skipping invalid file type: ${file.name} (${file.type})`);
+    return { success: false, file, error: 'Invalid file type' };
+  }
+  
+  // Compress image on mobile devices
+  file = await compressImageForMobile(file);
+  
+  // Use FormData for faster upload
+  const formData = new FormData();
+  formData.append('image', file);
+  
+  // Retry logic
+  const maxRetries = 3;
+  for (let retryCount = 0; retryCount < maxRetries; retryCount++) {
+    try {
+      const response = await fetch('/api/upload', {
+        method: 'POST',
+        body: formData,
+        signal: AbortSignal.timeout(60000) // 60 second timeout
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Upload failed: ${response.status} ${response.statusText}`);
+      }
+      
+      const data = await response.json();
+      console.log(`Upload response for ${file.name}:`, data);
+      
+      if (data.success) {
+        return { success: true, file, data };
+      }
+    } catch (uploadError) {
+      console.warn(`Upload attempt ${retryCount + 1} failed for ${file.name}:`, uploadError.message);
+      
+      if (retryCount < maxRetries - 1) {
+        // Wait before retry (exponential backoff)
+        await new Promise(resolve => setTimeout(resolve, 1000 * (retryCount + 1)));
+      } else {
+        return { success: false, file, error: uploadError.message };
+      }
+    }
+  }
+  
+  return { success: false, file, error: 'Max retries exceeded' };
 }
 
 function addBatchPreviewItem(filename, originalName, pageNumber) {
