@@ -3,6 +3,7 @@ import { existsSync } from "fs";
 import path from "path";
 import Replicate from "replicate";
 import sharp from "sharp";
+import { runWithPredictionsAndRetry } from "./replicate-helper.js";
 
 /**
  * AI-Powered Damage Mask Restoration using Google Nano Banana
@@ -159,11 +160,19 @@ export class AIDamageRestoration {
         console.log(`🔢 Inference Steps: ${options.num_inference_steps}`);
       }
 
-      // Run the model
+      // Run the model using optimized predictions API (6x faster)
       console.log(`🚀 Sending to Replicate API (Model: ${this.model})...`);
-      const output = await this.replicate.run(this.model, { 
-        input: replicateInput 
-      });
+      const output = await runWithPredictionsAndRetry(
+        this.replicate,
+        this.model,
+        replicateInput,
+        (progress) => {
+          // Log progress every 10 seconds
+          if (progress.pollCount % 10 === 0) {
+            console.log(`  ⏳ AI restoration in progress... (${progress.pollCount}s elapsed)`);
+          }
+        }
+      );
       
       console.log(`✅ Replicate API call completed successfully`);
 
