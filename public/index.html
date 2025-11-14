@@ -2127,5 +2127,51 @@
   </div>
 
   <script src="app.js"></script>
+  
+  <!-- Hot Reload Script -->
+  <script>
+    (function() {
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const wsUrl = `${protocol}//${window.location.host}`;
+      let ws;
+      let reconnectAttempts = 0;
+      const maxReconnectAttempts = 10;
+      
+      function connect() {
+        ws = new WebSocket(wsUrl);
+        
+        ws.onopen = () => {
+          console.log('🔥 Hot reload connected');
+          reconnectAttempts = 0;
+        };
+        
+        ws.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data);
+            if (data.type === 'reload') {
+              console.log(`🔄 File changed: ${data.file} - Reloading...`);
+              window.location.reload();
+            }
+          } catch (e) {
+            // Ignore non-reload messages
+          }
+        };
+        
+        ws.onclose = () => {
+          console.log('Hot reload disconnected');
+          if (reconnectAttempts < maxReconnectAttempts) {
+            reconnectAttempts++;
+            setTimeout(connect, 1000 * reconnectAttempts);
+          }
+        };
+        
+        ws.onerror = (error) => {
+          console.error('Hot reload error:', error);
+        };
+      }
+      
+      connect();
+    })();
+  </script>
 </body>
 </html>

@@ -95,6 +95,23 @@ function broadcast(message) {
   });
 }
 
+// File watching for hot reload
+const watchedDirs = [
+  path.join(__dirname, "..", "public"),
+  path.join(__dirname, "..", "src")
+];
+
+watchedDirs.forEach(dir => {
+  fs.watch(dir, { recursive: true }, (eventType, filename) => {
+    if (filename && (filename.endsWith('.html') || filename.endsWith('.js') || filename.endsWith('.css'))) {
+      console.log(`File changed: ${filename} - Broadcasting reload...`);
+      broadcast({ type: 'reload', file: filename });
+    }
+  });
+});
+
+console.log('Hot reload enabled - watching for file changes...');
+
 /**
  * Update job status and notify clients
  */
